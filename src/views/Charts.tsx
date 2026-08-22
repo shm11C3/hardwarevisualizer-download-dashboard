@@ -1,4 +1,5 @@
 import type {
+  AdoptionCurve,
   BreakdownItem,
   DashboardQuery,
   Platform,
@@ -119,6 +120,103 @@ export function UpdateHealthChart({
 
 function ChartEmpty({ message }: { message: string }) {
   return <div class="chart-empty">{message}</div>
+}
+
+const ADOPTION_COLORS = ['#9bb2ff', '#53e6c4', '#f4c06a', '#c39cff', '#ff8797']
+
+export function AdoptionCurveChart({ curves }: { curves: AdoptionCurve[] }) {
+  if (!curves.length) {
+    return (
+      <div class="chart-frame adoption-chart-frame">
+        <ChartEmpty message="比較できるリリースがまだありません" />
+      </div>
+    )
+  }
+
+  const width = 900
+  const height = 330
+  const margin = { top: 16, right: 16, bottom: 40, left: 58 }
+  const innerWidth = width - margin.left - margin.right
+  const innerHeight = height - margin.top - margin.bottom
+  const maximum = niceMaximum(
+    Math.max(...curves.flatMap((curve) => curve.points.map((point) => point.downloads)), 1),
+  )
+  const x = (day: number) => margin.left + (day / 30) * innerWidth
+  const y = (downloads: number) => margin.top + innerHeight - (downloads / maximum) * innerHeight
+  const gridLines = Array.from({ length: 5 }, (_, index) => {
+    const value = (maximum / 4) * index
+    return { value, y: y(value) }
+  })
+
+  return (
+    <div class="chart-frame adoption-chart-frame">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="リリース採用曲線">
+        {gridLines.map((line) => (
+          <>
+            <line
+              class="chart-grid-line"
+              x1={margin.left}
+              x2={width - margin.right}
+              y1={line.y}
+              y2={line.y}
+            />
+            <text class="chart-axis-text" x={margin.left - 10} y={line.y + 3} text-anchor="end">
+              {formatNumber(line.value)}
+            </text>
+          </>
+        ))}
+        {[0, 5, 10, 15, 20, 25, 30].map((day) => (
+          <text class="chart-axis-text" x={x(day)} y={height - 8} text-anchor="middle">
+            Day {day}
+          </text>
+        ))}
+        {curves.map((curve, curveIndex) => {
+          const color = ADOPTION_COLORS[curveIndex % ADOPTION_COLORS.length]
+          const segments: Point[][] = []
+          let previousDay: number | null = null
+          for (const point of curve.points) {
+            const current = segments.at(-1)
+            const chartPoint = { x: x(point.day), y: y(point.downloads) }
+            if (!current || previousDay === null || point.day !== previousDay + 1) {
+              segments.push([chartPoint])
+            } else {
+              current.push(chartPoint)
+            }
+            previousDay = point.day
+          }
+
+          return (
+            <>
+              {segments
+                .filter((segment) => segment.length > 1)
+                .map((segment) => (
+                  <path class="adoption-line" d={linePath(segment)} stroke={color} />
+                ))}
+              {curve.points.map((point) => (
+                <circle
+                  class="adoption-point"
+                  cx={x(point.day)}
+                  cy={y(point.downloads)}
+                  r="3"
+                  stroke={color}
+                >
+                  <title>{`${curve.tag} · Day ${point.day}: ${formatNumber(point.downloads)} 件`}</title>
+                </circle>
+              ))}
+            </>
+          )
+        })}
+      </svg>
+      <nav class="adoption-legend" aria-label="リリース凡例">
+        {curves.map((curve, index) => (
+          <a href={safeUrl(curve.url)} target="_blank" rel="noreferrer" title={curve.label}>
+            <span style={`--adoption-color: ${ADOPTION_COLORS[index % ADOPTION_COLORS.length]}`} />
+            {curve.tag}
+          </a>
+        ))}
+      </nav>
+    </div>
+  )
 }
 
 interface DailyChartProps {

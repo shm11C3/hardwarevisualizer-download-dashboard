@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildAdoptionCurves,
   buildArchitectureBreakdown,
   buildDailySeries,
   buildLatestVersionMetrics,
@@ -81,6 +82,63 @@ describe('buildArchitectureBreakdown', () => {
         downloads: 0,
         totalDownloads: 25,
         share: 0.25,
+      },
+    ])
+  })
+})
+
+describe('buildAdoptionCurves', () => {
+  it('keeps observed Day 0 values and leaves missing days out', () => {
+    const result = buildAdoptionCurves(
+      [
+        {
+          tag: 'v2.0.0',
+          label: 'Version 2',
+          published_at: '2026-08-01T15:30:00Z',
+          url: 'https://example.com/v2',
+          date: '2026-08-02',
+          downloads: 12,
+        },
+        {
+          tag: 'v2.0.0',
+          label: 'Version 2',
+          published_at: '2026-08-01T15:30:00Z',
+          url: 'https://example.com/v2',
+          date: '2026-08-04',
+          downloads: 31,
+        },
+      ],
+      '2026-08-01',
+      'Asia/Tokyo',
+    )
+
+    expect(result[0]?.points).toEqual([
+      { day: 0, downloads: 12 },
+      { day: 2, downloads: 31 },
+    ])
+  })
+
+  it('excludes pre-tracking releases and points after Day 30', () => {
+    const rows = [
+      ['old', '2026-07-31T00:00:00Z', '2026-08-02', 20],
+      ['current', '2026-08-01T15:00:00Z', '2026-09-01', 30],
+      ['current', '2026-08-01T15:00:00Z', '2026-09-02', 40],
+    ].map(([tag, publishedAt, date, downloads]) => ({
+      tag: String(tag),
+      label: String(tag),
+      published_at: String(publishedAt),
+      url: 'https://example.com',
+      date: String(date),
+      downloads: Number(downloads),
+    }))
+
+    expect(buildAdoptionCurves(rows, '2026-08-01', 'Asia/Tokyo')).toEqual([
+      {
+        tag: 'current',
+        label: 'current',
+        publishedAt: '2026-08-01T15:00:00Z',
+        url: 'https://example.com',
+        points: [{ day: 30, downloads: 30 }],
       },
     ])
   })

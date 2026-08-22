@@ -1,4 +1,5 @@
 import type {
+  AdoptionCurve,
   Architecture,
   AssetBreakdownItem,
   BreakdownItem,
@@ -110,6 +111,15 @@ export interface LatestVersionMetrics {
   latestVersionShare: number | null
   latestVersionTag: string | null
   latestVersionPublishedAt: string | null
+}
+
+export interface AdoptionCurveRow {
+  tag: string
+  label: string
+  published_at: string
+  url: string
+  date: string
+  downloads: number
 }
 
 function numberValue(value: unknown): number {
@@ -333,6 +343,87 @@ function filterClause(query: DashboardQuery): string {
   }
 
   return conditions.join(' AND ')
+}
+
+export function buildAdoptionCurves(
+  inputRows: AdoptionCurveRow[],
+  trackingSince: string,
+  timeZone: string,
+): AdoptionCurve[] {
+  const releases = new Map<string, Omit<AdoptionCurve, 'points'> & { publishedDate: string }>()
+  for (const row of inputRows) {
+    const publishedDate = toDateKey(new Date(row.published_at), timeZone)
+    const current = releases.get(row.tag)
+    if (!current || row.published_at < current.publishedAt) {
+      releases.set(row.tag, {
+        tag: row.tag,
+        label: row.label,
+        publishedAt: row.published_at,
+        publishedDate,
+        url: row.url,
+      })
+    }
+  }
+
+  return [...releases.values()]
+    .filter((release) => release.publishedDate >= trackingSince)
+    .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))
+    .slice(0, 5)
+    .map((release) => ({
+      tag: release.tag,
+      label: release.label,
+      publishedAt: release.publishedAt,
+      url: release.url,
+      points: inputRows
+        .filter((row) => row.tag === release.tag)
+        .map((row) => ({
+          day: daysBetween(release.publishedDate, row.date),
+          downloads: Math.max(0, numberValue(row.downloads)),
+        }))
+        .filter((point) => point.day >= 0 && point.day <= 30)
+        .sort((left, right) => left.day - right.day),
+    }))
+}
+
+async function adoptionCurveRows(
+  database: D1Database,
+  query: DashboardQuery,
+): Promise<AdoptionCurveRow[]> {
+  const result = await database
+    .prepare(
+      `
+        WITH recent_tags AS (
+          SELECT
+            r.tag_name AS tag,
+            COALESCE(NULLIF(MAX(r.name), ''), r.tag_name) AS label,
+            MIN(r.published_at) AS published_at,
+            MAX(r.html_url) AS url
+          FROM releases r
+          INNER JOIN assets a ON a.release_id = r.id
+          WHERE ${filterClause(query)}
+          GROUP BY r.tag_name
+          ORDER BY published_at DESC
+          LIMIT 5
+        )
+        SELECT
+          recent_tags.tag,
+          recent_tags.label,
+          recent_tags.published_at,
+          recent_tags.url,
+          s.snapshot_date AS date,
+          SUM(s.download_count) AS downloads
+        FROM recent_tags
+        INNER JOIN releases r ON r.tag_name = recent_tags.tag
+        INNER JOIN assets a ON a.release_id = r.id
+        INNER JOIN snapshots s ON s.asset_id = a.id
+        WHERE ${filterClause(query)}
+        GROUP BY recent_tags.tag, s.snapshot_date
+        ORDER BY recent_tags.published_at DESC, s.snapshot_date ASC
+      `,
+    )
+    .all<AdoptionCurveRow>()
+
+  return (result.results ?? []).map((row) => ({ ...row, downloads: numberValue(row.downloads) }))
 }
 
 async function lastCollection(database: D1Database): Promise<CollectionRunSummary | null> {
@@ -928,62 +1019,67 @@ export async function getDashboard(
     }
   }
 
-  const [platforms, architectures, releases, assets, platformRows, events, health, versionRows] =
-    await Promise.all([
-      platformBreakdown(
-        env.DB,
-        query,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-        analytics.periodDownloads,
-        analytics.totalDownloads,
-      ),
-      architectureBreakdown(
-        env.DB,
-        query,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-        analytics.periodDownloads,
-        analytics.totalDownloads,
-      ),
-      releaseBreakdown(
-        env.DB,
-        query,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-        analytics.periodDownloads,
-        analytics.totalDownloads,
-      ),
-      topAssets(
-        env.DB,
-        query,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-        analytics.periodDownloads,
-        analytics.totalDownloads,
-      ),
-      platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
-      releaseEvents(
-        env.DB,
-        analytics.series[0]?.date ?? analytics.latestSnapshotDate,
-        analytics.latestSnapshotDate,
-        timeZone,
-        query.channel,
-      ),
-      updateHealth(
-        env.DB,
-        query,
-        analytics.series[0]?.date ?? analytics.requestedStartDate,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-      ),
-      latestVersionRows(
-        env.DB,
-        query,
-        analytics.latestSnapshotDate,
-        analytics.effectiveBaselineDate,
-      ),
-    ])
+  const [
+    platforms,
+    architectures,
+    releases,
+    assets,
+    platformRows,
+    events,
+    health,
+    versionRows,
+    adoptionRows,
+  ] = await Promise.all([
+    platformBreakdown(
+      env.DB,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+      analytics.periodDownloads,
+      analytics.totalDownloads,
+    ),
+    architectureBreakdown(
+      env.DB,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+      analytics.periodDownloads,
+      analytics.totalDownloads,
+    ),
+    releaseBreakdown(
+      env.DB,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+      analytics.periodDownloads,
+      analytics.totalDownloads,
+    ),
+    topAssets(
+      env.DB,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+      analytics.periodDownloads,
+      analytics.totalDownloads,
+    ),
+    platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
+    releaseEvents(
+      env.DB,
+      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+      analytics.latestSnapshotDate,
+      timeZone,
+      query.channel,
+    ),
+    updateHealth(
+      env.DB,
+      query,
+      analytics.series[0]?.date ?? analytics.requestedStartDate,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+    ),
+    latestVersionRows(env.DB, query, analytics.latestSnapshotDate, analytics.effectiveBaselineDate),
+    adoptionCurveRows(env.DB, query),
+  ])
   const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
 
   return {
@@ -1024,6 +1120,7 @@ export async function getDashboard(
     platformBreakdown: platforms,
     architectureBreakdown: architectures,
     releaseBreakdown: releases,
+    adoptionCurves: buildAdoptionCurves(adoptionRows, analytics.trackingSince, timeZone),
     topAssets: assets,
     updateHealth: health,
     ...latestVersion,

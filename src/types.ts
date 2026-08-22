@@ -73,6 +73,19 @@ export interface PlatformSeriesItem {
   points: PlatformSeriesPoint[]
 }
 
+export interface AdoptionCurvePoint {
+  day: number
+  downloads: number
+}
+
+export interface AdoptionCurve {
+  tag: string
+  label: string
+  publishedAt: string
+  url: string
+  points: AdoptionCurvePoint[]
+}
+
 export interface BreakdownItem {
   key: string
   label: string
@@ -160,6 +173,7 @@ export interface DashboardResponse {
   platformBreakdown: BreakdownItem[]
   architectureBreakdown: BreakdownItem[]
   releaseBreakdown: ReleaseBreakdownItem[]
+  adoptionCurves: AdoptionCurve[]
   topAssets: AssetBreakdownItem[]
   updateHealth: UpdateHealth
   latestVersionShare: number | null

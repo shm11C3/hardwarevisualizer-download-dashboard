@@ -3,6 +3,7 @@
 // render in production.
 import { coerceDashboardQuery } from '../../src/lib/query'
 import type {
+  AdoptionCurve,
   Architecture,
   AssetBreakdownItem,
   BreakdownItem,
@@ -118,6 +119,19 @@ function releaseBreakdown(period: number): ReleaseBreakdownItem[] {
       url: `https://github.com/shm11C3/HardwareVisualizer/releases/tag/${release.tag}`,
     }
   })
+}
+
+function adoptionCurves(): AdoptionCurve[] {
+  return RELEASES.slice(0, 3).map((release, releaseIndex) => ({
+    tag: release.tag,
+    label: `HardwareVisualizer ${release.tag}`,
+    publishedAt: release.publishedAt,
+    url: `https://github.com/shm11C3/HardwareVisualizer/releases/tag/${release.tag}`,
+    points: Array.from({ length: 31 }, (_, day) => ({
+      day,
+      downloads: Math.round((releaseIndex + 1) * 6 + day * (52 - releaseIndex * 11)),
+    })),
+  }))
 }
 
 const ASSETS: {
@@ -309,6 +323,7 @@ export function previewDashboard(url: URL): DashboardResponse {
     platformBreakdown: platforms,
     architectureBreakdown: architectureBreakdown(periodDownloads),
     releaseBreakdown: releases,
+    adoptionCurves: adoptionCurves(),
     topAssets: topAssets(periodDownloads),
     updateHealth: {
       installer: { periodDownloads: Math.round(periodDownloads * 0.62), series: installerSeries },
