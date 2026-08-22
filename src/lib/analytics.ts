@@ -122,6 +122,82 @@ export interface AdoptionCurveRow {
   downloads: number
 }
 
+export interface WeekdayAverage {
+  key: number
+  label: string
+  average: number
+  observations: number
+}
+
+export interface MilestoneRecord {
+  reached: number
+  reachedAt: string | null
+  next: number
+  remaining: number
+}
+
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const
+
+export function calculateWeekdayAverages(series: SeriesPoint[]): WeekdayAverage[] {
+  const totals = WEEKDAY_LABELS.map(() => ({ total: 0, observations: 0 }))
+
+  for (const point of series) {
+    if (point.dailyDownloads === null) continue
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(point.date)
+    if (!match) continue
+    const weekday = new Date(
+      Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+    ).getUTCDay()
+    const bucket = totals[weekday]
+    if (!bucket) continue
+    bucket.total += point.dailyDownloads
+    bucket.observations += 1
+  }
+
+  return [1, 2, 3, 4, 5, 6, 0].map((key) => {
+    const bucket = totals[key] ?? { total: 0, observations: 0 }
+    return {
+      key,
+      label: WEEKDAY_LABELS[key] ?? '',
+      average: bucket.observations === 0 ? 0 : round(bucket.total / bucket.observations, 2),
+      observations: bucket.observations,
+    }
+  })
+}
+
+function milestoneAtOrBelow(total: number): number {
+  if (total <= 0) return 0
+  const magnitude = 10 ** Math.floor(Math.log10(total))
+  return total >= magnitude * 5 ? magnitude * 5 : magnitude
+}
+
+export function calculateMilestone(series: SeriesPoint[]): MilestoneRecord {
+  const current = Math.max(0, series.at(-1)?.totalDownloads ?? 0)
+  const reached = milestoneAtOrBelow(current)
+  const magnitude = reached === 0 ? 1 : 10 ** Math.floor(Math.log10(reached))
+  const next = reached === 0 ? 1 : reached === magnitude ? reached * 5 : reached * 2
+  const reachedAt =
+    reached === 0
+      ? null
+      : (series.find(
+          (point, index) =>
+            index > 0 &&
+            (series[index - 1]?.totalDownloads ?? reached) < reached &&
+            point.totalDownloads >= reached,
+        )?.date ?? null)
+
+  return { reached, reachedAt, next, remaining: Math.max(0, next - current) }
+}
+
+export function calculateObservationStreak(series: SeriesPoint[]): number {
+  let streak = 0
+  for (let index = series.length - 1; index >= 0; index -= 1) {
+    if (!series[index]?.observed) break
+    streak += 1
+  }
+  return streak
+}
+
 function numberValue(value: unknown): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -924,6 +1000,8 @@ function buildInsights(
   const publicationNote = publishedDuringPeriod
     ? ` ${latestVersion.latestVersionTag ?? '最新バージョン'} は期間の途中で公開されています。`
     : ''
+  const milestone = calculateMilestone(analytics.series)
+  const observationStreak = calculateObservationStreak(analytics.series)
 
   let growthValue = '比較データなし'
   let growthBody = '同じ長さの直前期間が揃うと、増減率を表示します。'
@@ -985,6 +1063,24 @@ function buildInsights(
       title: 'データ完全性',
       value: `${formatNumber(analytics.completeness * 100)}%`,
       body: `${analytics.observedSnapshots} / ${analytics.expectedSnapshots} 日分のスナップショットを確認できました。`,
+    },
+    {
+      kind: 'milestone',
+      title: '累計マイルストーン',
+      value: milestone.reached > 0 ? `${formatNumber(milestone.reached)} 件` : 'これから',
+      body:
+        milestone.reached > 0
+          ? `${milestone.reachedAt ? `${milestone.reachedAt} に到達。` : '表示期間より前に到達。'}次の ${formatNumber(milestone.next)} 件まで残り ${formatNumber(milestone.remaining)} 件です。`
+          : `最初の ${formatNumber(milestone.next)} 件まで残り ${formatNumber(milestone.remaining)} 件です。`,
+    },
+    {
+      kind: 'streak',
+      title: '観測ストリーク',
+      value: `${formatNumber(observationStreak)} 日`,
+      body:
+        observationStreak > 0
+          ? '最新日から連続してスナップショットを観測できています。'
+          : '最新日のスナップショットを観測できていません。',
     },
   ]
 }

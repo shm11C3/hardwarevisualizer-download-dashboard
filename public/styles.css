@@ -1325,6 +1325,9 @@ tbody tr:hover td {
 
   .platform-trend-legend {
     display: none;
+  }
+}
+
 /* Installer vs updater comparison panel. */
 .insight-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1482,5 +1485,101 @@ tbody tr:hover td {
 @media (max-width: 620px) {
   .adoption-panel {
     padding: 20px 17px;
+  }
+}
+
+/* Export actions and weekday rhythm panel. */
+.daily-panel-tools {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.export-links {
+  display: flex;
+  gap: 6px;
+}
+
+.export-links a {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+}
+
+.export-links a:hover,
+.export-links a:focus-visible {
+  border-color: var(--border-strong);
+  color: var(--primary-bright);
+  background: rgba(124, 156, 255, 0.08);
+}
+
+.weekday-panel {
+  margin-bottom: 14px;
+  padding: 25px;
+}
+
+.weekday-chart {
+  min-height: 250px;
+  margin-top: 20px;
+}
+
+.weekday-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.weekday-bar {
+  fill: rgba(124, 156, 255, 0.34);
+}
+
+.weekday-bar.active {
+  fill: var(--secondary);
+  filter: drop-shadow(0 0 8px rgba(83, 230, 196, 0.28));
+}
+
+.weekday-value {
+  fill: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.weekday-value.active {
+  fill: var(--secondary);
+}
+
+.weekday-caption {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.weekday-caption strong {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 620px) {
+  .daily-panel-tools {
+    align-items: flex-end;
+  }
+
+  .weekday-panel {
+    padding: 20px 17px;
+  }
+
+  .weekday-chart {
+    min-height: 190px;
+    overflow-x: auto;
+  }
+
+  .weekday-chart svg {
+    min-width: 560px;
   }
 }

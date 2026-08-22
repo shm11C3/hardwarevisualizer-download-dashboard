@@ -69,6 +69,9 @@ describe('DashboardPage', () => {
     expect(html).toContain('scope）設定の影響を受けません')
     expect(html).toContain('リリース採用曲線')
     expect(html).toContain('v1.9.2 · Day 30')
+    expect(html).toContain('/api/export.csv?days=90&amp;channel=all&amp;scope=all')
+    expect(html).toContain('/api/dashboard?days=90&amp;channel=all&amp;scope=all')
+    expect(html).toContain('曜日パターン')
   })
 
   it('renders the adoption-curve empty state when no releases are comparable', async () => {

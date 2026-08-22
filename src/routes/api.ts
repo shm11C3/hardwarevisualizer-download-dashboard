@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
 import { collectDownloads } from '../lib/collector'
+import { buildSeriesCsv } from '../lib/export'
 import { parseDashboardQuery } from '../lib/query'
 import { BASELINE_SECURITY_HEADERS } from '../lib/security'
 import type { AppEnv } from '../types'
@@ -48,6 +49,30 @@ api.get('/dashboard', async (context) => {
   const response = await getDashboard(context.env, query)
   context.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   return context.json(response)
+})
+
+api.get('/export.csv', async (context) => {
+  const query = parseDashboardQuery(new URL(context.req.url))
+  if (!query) {
+    return context.json(
+      {
+        error: 'invalid_query',
+        message:
+          'days は 7, 30, 90, 365、channel は stable または all、scope は installers, distribution, all を指定してください。',
+      },
+      400,
+    )
+  }
+
+  const response = await getDashboard(context.env, query)
+  const series = response.status === 'ok' ? response.series : []
+  context.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+  context.header('Content-Type', 'text/csv; charset=utf-8')
+  context.header(
+    'Content-Disposition',
+    `attachment; filename="hardviz-downloads-${query.days}d-${query.channel}-${query.scope}.csv"`,
+  )
+  return context.body(buildSeriesCsv(series))
 })
 
 api.get('/health', async (context) => {

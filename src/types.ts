@@ -114,7 +114,7 @@ export interface AssetBreakdownItem {
 }
 
 export interface DashboardInsight {
-  kind: 'growth' | 'platform' | 'release' | 'peak' | 'data' | 'latest'
+  kind: 'growth' | 'platform' | 'release' | 'peak' | 'data' | 'latest' | 'milestone' | 'streak'
   title: string
   value: string
   body: string
