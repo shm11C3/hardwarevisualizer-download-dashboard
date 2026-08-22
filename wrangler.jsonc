@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "hardwarevisualizer-downloads",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "66f7e325-571c-4416-8618-7061819a0cda",
       "migrations_dir": "migrations"
     }
   ],
