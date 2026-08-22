@@ -7,7 +7,7 @@ const GITHUB_ICON_PATH =
 const DESCRIPTION =
   'HardwareVisualizer の GitHub Release ダウンロードを日次で記録し、推移を分析するダッシュボード'
 
-export function Layout({ children }: PropsWithChildren) {
+export function Layout({ stylesheet, children }: PropsWithChildren<{ stylesheet: string }>) {
   return (
     <>
       {raw('<!doctype html>')}
@@ -23,7 +23,7 @@ export function Layout({ children }: PropsWithChildren) {
           <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
           <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
           <link rel="manifest" href="/manifest.webmanifest" />
-          <link rel="stylesheet" href="/styles.css" />
+          <link rel="stylesheet" href={stylesheet} />
         </head>
         <body>
           <div class="ambient ambient-one" aria-hidden="true" />

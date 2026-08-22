@@ -1,6 +1,7 @@
 import type { NotFoundHandler } from 'hono'
 import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
+import { stylesheetHref } from '../lib/asset-version'
 import { CACHE_BUST_PARAM, coerceDashboardQuery } from '../lib/query'
 import { DOCUMENT_SECURITY_HEADERS } from '../lib/security'
 import type { AppEnv } from '../types'
@@ -23,11 +24,13 @@ page.get('/', async (context) => {
     context.header(name, value)
   }
 
+  const stylesheet = await stylesheetHref(context.env, url.origin)
+
   try {
     const data = await getDashboard(context.env, query)
     context.header('Cache-Control', bypassCache ? 'no-store' : DOCUMENT_CACHE_CONTROL)
     return context.html(
-      <Layout>
+      <Layout stylesheet={stylesheet}>
         <DashboardPage data={data} query={query} nonce={nonce} />
       </Layout>,
     )
@@ -43,7 +46,7 @@ page.get('/', async (context) => {
     )
     context.header('Cache-Control', 'no-store')
     return context.html(
-      <Layout>
+      <Layout stylesheet={stylesheet}>
         <ErrorPage query={query} nonce={nonce} />
       </Layout>,
       500,
@@ -55,13 +58,14 @@ export default page
 
 // The Worker now answers browser navigations as well as API calls, so an
 // unknown path needs an HTML answer rather than the API's JSON envelope.
-export const notFoundPage: NotFoundHandler<AppEnv> = (context) => {
+export const notFoundPage: NotFoundHandler<AppEnv> = async (context) => {
   for (const [name, value] of Object.entries(DOCUMENT_SECURITY_HEADERS)) {
     context.header(name, value)
   }
   context.header('Cache-Control', 'no-store')
+  const stylesheet = await stylesheetHref(context.env, new URL(context.req.url).origin)
   return context.html(
-    <Layout>
+    <Layout stylesheet={stylesheet}>
       <section class="empty-state">
         <div class="empty-icon">↘</div>
         <h2>ページが見つかりません</h2>

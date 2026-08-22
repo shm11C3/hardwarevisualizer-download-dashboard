@@ -25,5 +25,9 @@
 /app-icon.png
   Cache-Control: public, max-age=86400
 
+# The page links this as /styles.css?v=<content hash>, so a changed stylesheet
+# arrives under a new URL and is never served from a stale cache. max-age is
+# still bounded rather than immutable: if the hash lookup ever falls back to the
+# bare path, the worst case is a day of staleness rather than a year of it.
 /styles.css
-  Cache-Control: public, max-age=3600
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800

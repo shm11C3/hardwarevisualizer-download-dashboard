@@ -59,3 +59,21 @@ jobs:
 
       - name: Deploy Worker
         run: npm run deploy
+
+      # The page links /styles.css?v=<hash from the asset ETag>. Serving it from
+      # a bare, stable URL is how a CSS change once reached browsers that still
+      # held the previous copy, leaving new markup styled by an old stylesheet.
+      # Set the PRODUCTION_URL repository variable to enable this check.
+      - name: Check the deployed page busts the stylesheet cache
+        if: vars.PRODUCTION_URL != ''
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          page="$(curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "${PRODUCTION_URL%/}/")"
+          href="$(printf '%s' "$page" | grep -o '/styles\.css?v=[A-Za-z0-9]\+' | head -1)"
+          if [ -z "$href" ]; then
+            echo "::error::The deployed page links an unversioned stylesheet; a CSS change would reach browsers holding a stale copy."
+            exit 1
+          fi
+          curl -fsS -o /dev/null "${PRODUCTION_URL%/}$href"
+          echo "Stylesheet is cache-busted: $href"
