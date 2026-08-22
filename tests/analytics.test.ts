@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildArchitectureBreakdown, buildPeriodAnalytics } from '../src/lib/analytics'
+import {
+  buildArchitectureBreakdown,
+  buildPeriodAnalytics,
+  buildPlatformSeries,
+  selectReleaseEvents,
+} from '../src/lib/analytics'
 
 describe('buildPeriodAnalytics', () => {
   it('uses the first snapshot as a baseline instead of counting historical totals', () => {
@@ -75,6 +80,69 @@ describe('buildArchitectureBreakdown', () => {
         totalDownloads: 25,
         share: 0.25,
       },
+    ])
+  })
+})
+
+describe('buildPlatformSeries', () => {
+  it('only calculates daily platform deltas for consecutive observations', () => {
+    const result = buildPlatformSeries(
+      [
+        { date: '2026-08-19', platform: 'windows', total: 100 },
+        { date: '2026-08-20', platform: 'windows', total: 112 },
+        { date: '2026-08-22', platform: 'windows', total: 150 },
+        { date: '2026-08-19', platform: 'macos', total: 50 },
+        { date: '2026-08-20', platform: 'macos', total: 57 },
+      ],
+      '2026-08-19',
+      '2026-08-22',
+    )
+
+    expect(result.find((item) => item.key === 'windows')?.points).toEqual([
+      { date: '2026-08-19', dailyDownloads: null },
+      { date: '2026-08-20', dailyDownloads: 12 },
+      { date: '2026-08-21', dailyDownloads: null },
+      { date: '2026-08-22', dailyDownloads: null },
+    ])
+    expect(result.find((item) => item.key === 'macos')?.points[1]?.dailyDownloads).toBe(7)
+  })
+})
+
+describe('selectReleaseEvents', () => {
+  const rows = [
+    {
+      tag: 'v2.0.0-beta.1',
+      label: 'Beta',
+      publishedAt: '2026-08-19T15:30:00Z',
+      prerelease: true,
+      url: 'https://example.com/beta',
+    },
+    {
+      tag: 'v2.0.0',
+      label: 'Stable',
+      publishedAt: '2026-08-21T15:30:00Z',
+      prerelease: false,
+      url: 'https://example.com/stable',
+    },
+    {
+      tag: 'v1.9.0',
+      label: 'Old',
+      publishedAt: '2026-08-01T00:00:00Z',
+      prerelease: false,
+      url: 'https://example.com/old',
+    },
+  ]
+
+  it('uses JST dates and keeps only releases inside the series range', () => {
+    expect(selectReleaseEvents(rows, '2026-08-20', '2026-08-22', 'Asia/Tokyo', 'all')).toEqual([
+      expect.objectContaining({ tag: 'v2.0.0-beta.1', date: '2026-08-20' }),
+      expect.objectContaining({ tag: 'v2.0.0', date: '2026-08-22' }),
+    ])
+  })
+
+  it('excludes prereleases from the stable channel', () => {
+    expect(selectReleaseEvents(rows, '2026-08-20', '2026-08-22', 'Asia/Tokyo', 'stable')).toEqual([
+      expect.objectContaining({ tag: 'v2.0.0' }),
     ])
   })
 })

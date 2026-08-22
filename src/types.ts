@@ -54,6 +54,25 @@ export interface SeriesPoint {
   observed: boolean
 }
 
+export interface ReleaseEvent {
+  tag: string
+  label: string
+  prerelease: boolean
+  url: string
+  date: string
+}
+
+export interface PlatformSeriesPoint {
+  date: string
+  dailyDownloads: number | null
+}
+
+export interface PlatformSeriesItem {
+  key: Platform
+  label: string
+  points: PlatformSeriesPoint[]
+}
+
 export interface BreakdownItem {
   key: string
   label: string
@@ -126,6 +145,8 @@ export interface DashboardResponse {
     latestDayDate: string | null
   }
   series: SeriesPoint[]
+  releaseEvents: ReleaseEvent[]
+  platformSeries: PlatformSeriesItem[]
   platformBreakdown: BreakdownItem[]
   architectureBreakdown: BreakdownItem[]
   releaseBreakdown: ReleaseBreakdownItem[]

@@ -1,4 +1,12 @@
-import type { BreakdownItem, DashboardQuery, ReleaseBreakdownItem, SeriesPoint } from '../types'
+import type {
+  BreakdownItem,
+  DashboardQuery,
+  Platform,
+  PlatformSeriesItem,
+  ReleaseBreakdownItem,
+  ReleaseEvent,
+  SeriesPoint,
+} from '../types'
 import { type Formatter, formatDecimal, formatNumber, safeUrl } from './format'
 
 interface Point {
@@ -28,9 +36,10 @@ interface DailyChartProps {
   series: SeriesPoint[]
   days: DashboardQuery['days']
   formatter: Formatter
+  releaseEvents: ReleaseEvent[]
 }
 
-export function DailyChart({ series, days, formatter }: DailyChartProps) {
+export function DailyChart({ series, days, formatter, releaseEvents }: DailyChartProps) {
   if (!series.length) {
     return (
       <div class="chart-frame">
@@ -114,6 +123,19 @@ export function DailyChart({ series, days, formatter }: DailyChartProps) {
             >
               <title>{`${point.date}: ${formatNumber(value)} 件`}</title>
             </rect>
+          )
+        })}
+        {releaseEvents.map((event) => {
+          const index = series.findIndex((point) => point.date === event.date)
+          if (index < 0) return null
+          const x = margin.left + index * step + step / 2
+          return (
+            <g class="release-marker">
+              <line x1={x} x2={x} y1={margin.top} y2={margin.top + innerHeight} />
+              <circle cx={x} cy={margin.top + 5} r="4">
+                <title>{event.tag}</title>
+              </circle>
+            </g>
           )
         })}
         {movingAverage.length > 1 ? <path class="chart-line" d={linePath(movingAverage)} /> : null}
@@ -211,7 +233,22 @@ export function CumulativeChart({ series, days, formatter }: CumulativeChartProp
   )
 }
 
-const PLATFORM_COLORS = ['#7c9cff', '#53e6c4', '#f4c06a', '#9a84f7']
+export const PLATFORM_COLORS: Record<Platform, string> = {
+  windows: '#7c9cff',
+  macos: '#53e6c4',
+  linux: '#f4c06a',
+  unknown: '#9a84f7',
+}
+
+const FALLBACK_COLORS = ['#7c9cff', '#53e6c4', '#f4c06a', '#9a84f7']
+
+function breakdownColor(key: string, index: number): string {
+  return (
+    PLATFORM_COLORS[key as Platform] ??
+    FALLBACK_COLORS[index % FALLBACK_COLORS.length] ??
+    PLATFORM_COLORS.unknown
+  )
+}
 
 export function PlatformBreakdown({
   items,
@@ -235,7 +272,7 @@ export function PlatformBreakdown({
   const segments = items.map((item, index) => {
     const dash = Math.min(1, Math.max(0, item.share)) * circumference
     const segment = {
-      color: PLATFORM_COLORS[index % PLATFORM_COLORS.length] ?? PLATFORM_COLORS[0],
+      color: breakdownColor(item.key, index),
       dash,
       offset,
     }
@@ -268,10 +305,7 @@ export function PlatformBreakdown({
       <div class="platform-legend">
         {items.map((item, index) => (
           <div class="platform-row">
-            <span
-              class="platform-swatch"
-              style={`--swatch: ${PLATFORM_COLORS[index % PLATFORM_COLORS.length]}`}
-            />
+            <span class="platform-swatch" style={`--swatch: ${breakdownColor(item.key, index)}`} />
             <span class="platform-copy">
               <strong>{item.label}</strong>
               <span>{formatNumber(item.downloads)} downloads</span>
@@ -280,6 +314,90 @@ export function PlatformBreakdown({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+export function PlatformTrendChart({
+  items,
+  days,
+  formatter,
+}: {
+  items: PlatformSeriesItem[]
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const dates = items[0]?.points.map((point) => point.date) ?? []
+  if (!dates.length) {
+    return <ChartEmpty message="表示できる OS 別データがありません" />
+  }
+
+  const width = 900
+  const height = 300
+  const margin = { top: 12, right: 14, bottom: 36, left: 52 }
+  const innerWidth = width - margin.left - margin.right
+  const innerHeight = height - margin.top - margin.bottom
+  const totals = dates.map((_, index) =>
+    items.reduce((sum, item) => sum + (item.points[index]?.dailyDownloads ?? 0), 0),
+  )
+  const maximum = niceMaximum(Math.max(...totals, 1))
+  const step = innerWidth / Math.max(dates.length, 1)
+  const barWidth = Math.max(1.2, Math.min(13, step * 0.7))
+  const y = (value: number) => margin.top + innerHeight - (value / maximum) * innerHeight
+  const labelCount = Math.min(6, dates.length)
+  const labels = Array.from({ length: labelCount }, (_, index) => {
+    const dataIndex = Math.round((index * (dates.length - 1)) / Math.max(labelCount - 1, 1))
+    return { date: dates[dataIndex], x: margin.left + dataIndex * step + step / 2 }
+  })
+
+  return (
+    <div class="chart-frame platform-trend-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="OS別の日次ダウンロード推移">
+        {Array.from({ length: 5 }, (_, index) => {
+          const value = (maximum / 4) * index
+          return (
+            <>
+              <line
+                class="chart-grid-line"
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text class="chart-axis-text" x={margin.left - 10} y={y(value) + 3} text-anchor="end">
+                {formatNumber(value)}
+              </text>
+            </>
+          )
+        })}
+        {dates.map((date, index) => {
+          let accumulated = 0
+          return items.map((item) => {
+            const value = item.points[index]?.dailyDownloads
+            if (value === null || value === undefined) return null
+            const barHeight = (value / maximum) * innerHeight
+            const rect = (
+              <rect
+                class="platform-trend-segment"
+                x={(margin.left + index * step + (step - barWidth) / 2).toFixed(2)}
+                y={y(accumulated + value).toFixed(2)}
+                width={barWidth.toFixed(2)}
+                height={Math.max(value > 0 ? 1 : 0, barHeight).toFixed(2)}
+                fill={PLATFORM_COLORS[item.key]}
+              >
+                <title>{`${date} ${item.label}: ${formatNumber(value)} 件`}</title>
+              </rect>
+            )
+            accumulated += value
+            return rect
+          })
+        })}
+        {labels.map((label) => (
+          <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
+            {formatter.chartLabel(label.date, days === 365)}
+          </text>
+        ))}
+      </svg>
     </div>
   )
 }

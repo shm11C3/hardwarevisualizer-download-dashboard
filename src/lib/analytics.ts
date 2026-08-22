@@ -8,11 +8,13 @@ import type {
   DashboardResponse,
   EmptyDashboardResponse,
   Platform,
+  PlatformSeriesItem,
   ReleaseBreakdownItem,
+  ReleaseEvent,
   SeriesPoint,
 } from '../types'
 import { architectureLabel, platformLabel } from './assets'
-import { addDays, daysBetween, enumerateDates, laterDate } from './date'
+import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './date'
 
 export interface DailyTotalRow {
   date: string
@@ -56,6 +58,20 @@ export interface ArchitectureBreakdownRow {
   key: string
   downloads: number
   total_downloads: number
+}
+
+export interface PlatformTotalRow {
+  date: string
+  platform: Platform
+  total: number
+}
+
+export interface ReleaseEventRow {
+  tag: string
+  label: string
+  publishedAt: string
+  prerelease: boolean
+  url: string
 }
 
 interface ReleaseRow extends PlatformRow {
@@ -106,6 +122,65 @@ function findLastOnOrBefore(rows: DailyTotalRow[], date: string): DailyTotalRow 
     }
   }
   return null
+}
+
+export function buildPlatformSeries(
+  inputRows: PlatformTotalRow[],
+  startDate: string,
+  endDate: string,
+): PlatformSeriesItem[] {
+  const dates = enumerateDates(startDate, endDate)
+  const platforms = [...new Set(inputRows.map((row) => row.platform))].sort()
+
+  return platforms.map((platform) => {
+    const totals = new Map(
+      inputRows
+        .filter((row) => row.platform === platform)
+        .map((row) => [row.date, Math.max(0, numberValue(row.total))]),
+    )
+    return {
+      key: platform,
+      label: platformLabel(platform),
+      points: dates.map((date) => {
+        const current = totals.get(date)
+        const previous = totals.get(addDays(date, -1))
+        return {
+          date,
+          dailyDownloads:
+            current === undefined || previous === undefined
+              ? null
+              : Math.max(0, current - previous),
+        }
+      }),
+    }
+  })
+}
+
+export function selectReleaseEvents(
+  rows: ReleaseEventRow[],
+  startDate: string,
+  endDate: string,
+  timeZone: string,
+  channel: DashboardQuery['channel'],
+): ReleaseEvent[] {
+  const events = new Map<string, ReleaseEvent>()
+  for (const row of rows) {
+    if (channel === 'stable' && row.prerelease) continue
+    const published = new Date(row.publishedAt)
+    if (Number.isNaN(published.getTime())) continue
+    const date = toDateKey(published, timeZone)
+    if (date < startDate || date > endDate || events.has(row.tag)) continue
+    events.set(row.tag, {
+      tag: row.tag,
+      label: row.label,
+      prerelease: row.prerelease,
+      url: row.url,
+      date,
+    })
+  }
+  return [...events.values()].sort(
+    (left, right) => left.date.localeCompare(right.date) || left.tag.localeCompare(right.tag),
+  )
 }
 
 export function buildPeriodAnalytics(
@@ -262,6 +337,63 @@ async function dailyTotals(database: D1Database, query: DashboardQuery): Promise
     date: row.date,
     total: numberValue(row.total),
   }))
+}
+
+async function platformTotals(
+  database: D1Database,
+  query: DashboardQuery,
+  startDate: string,
+  endDate: string,
+): Promise<PlatformTotalRow[]> {
+  const result = await database
+    .prepare(
+      `
+        SELECT s.snapshot_date AS date, a.platform, SUM(s.download_count) AS total
+        FROM snapshots s
+        INNER JOIN assets a ON a.id = s.asset_id
+        INNER JOIN releases r ON r.id = a.release_id
+        WHERE ${filterClause(query)} AND s.snapshot_date BETWEEN ? AND ?
+        GROUP BY s.snapshot_date, a.platform
+        ORDER BY s.snapshot_date ASC, a.platform ASC
+      `,
+    )
+    .bind(startDate, endDate)
+    .all<PlatformTotalRow>()
+
+  return (result.results ?? []).map((row) => ({ ...row, total: numberValue(row.total) }))
+}
+
+async function releaseEvents(
+  database: D1Database,
+  startDate: string,
+  endDate: string,
+  timeZone: string,
+  channel: DashboardQuery['channel'],
+): Promise<ReleaseEvent[]> {
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          tag_name AS tag,
+          COALESCE(NULLIF(MAX(name), ''), tag_name) AS label,
+          MIN(published_at) AS publishedAt,
+          MAX(prerelease) AS prerelease,
+          MAX(html_url) AS url
+        FROM releases
+        WHERE draft = 0
+        GROUP BY tag_name
+        ORDER BY publishedAt ASC
+      `,
+    )
+    .all<{ tag: string; label: string; publishedAt: string; prerelease: number; url: string }>()
+
+  return selectReleaseEvents(
+    (result.results ?? []).map((row) => ({ ...row, prerelease: Boolean(row.prerelease) })),
+    startDate,
+    endDate,
+    timeZone,
+    channel,
+  )
 }
 
 function share(
@@ -618,7 +750,7 @@ export async function getDashboard(
     }
   }
 
-  const [platforms, architectures, releases, assets] = await Promise.all([
+  const [platforms, architectures, releases, assets, platformRows, events] = await Promise.all([
     platformBreakdown(
       env.DB,
       query,
@@ -651,6 +783,14 @@ export async function getDashboard(
       analytics.periodDownloads,
       analytics.totalDownloads,
     ),
+    platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
+    releaseEvents(
+      env.DB,
+      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+      analytics.latestSnapshotDate,
+      timeZone,
+      query.channel,
+    ),
   ])
 
   return {
@@ -682,6 +822,12 @@ export async function getDashboard(
       latestDayDate: analytics.latestDayDate,
     },
     series: analytics.series,
+    releaseEvents: events,
+    platformSeries: buildPlatformSeries(
+      platformRows,
+      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+      analytics.latestSnapshotDate,
+    ),
     platformBreakdown: platforms,
     architectureBreakdown: architectures,
     releaseBreakdown: releases,

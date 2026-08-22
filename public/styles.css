@@ -1259,3 +1259,71 @@ tbody tr:hover td {
 .table-wrap {
   min-width: 0;
 }
+
+/* Release markers and the platform trend panel. */
+.legend-release {
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border: 1px solid var(--warning);
+  border-radius: 50%;
+  background: var(--surface-solid);
+}
+
+.release-marker line {
+  stroke: rgba(244, 192, 106, 0.48);
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+
+.release-marker circle {
+  fill: var(--surface-solid);
+  stroke: var(--warning);
+  stroke-width: 2;
+}
+
+.platform-trend-panel {
+  margin-bottom: 14px;
+  padding: 25px;
+}
+
+.platform-trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: flex-end;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.platform-trend-legend span {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.platform-trend-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--swatch);
+}
+
+.platform-trend-segment {
+  transition: opacity 120ms ease;
+}
+
+.platform-trend-segment:hover {
+  opacity: 0.76;
+}
+
+@media (max-width: 620px) {
+  .platform-trend-panel {
+    padding: 20px 17px;
+  }
+
+  .platform-trend-legend {
+    display: none;
+  }
+}

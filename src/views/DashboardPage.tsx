@@ -6,7 +6,14 @@ import type {
   DashboardResponse,
   EmptyDashboardResponse,
 } from '../types'
-import { CumulativeChart, DailyChart, PlatformBreakdown, ReleaseBreakdown } from './Charts'
+import {
+  CumulativeChart,
+  DailyChart,
+  PLATFORM_COLORS,
+  PlatformBreakdown,
+  PlatformTrendChart,
+  ReleaseBreakdown,
+} from './Charts'
 import { Controls } from './Controls'
 import {
   createFormatter,
@@ -282,9 +289,15 @@ export function DashboardPage({
                 </div>
                 <div class="chart-legend">
                   <span class="legend-bar" /> 日次 <span class="legend-line" /> 7日移動平均
+                  <span class="legend-release" /> リリース
                 </div>
               </div>
-              <DailyChart series={data.series} days={data.meta.days} formatter={formatter} />
+              <DailyChart
+                series={data.series}
+                days={data.meta.days}
+                formatter={formatter}
+                releaseEvents={data.releaseEvents}
+              />
             </article>
 
             <article class="panel cumulative-panel">
@@ -306,6 +319,28 @@ export function DashboardPage({
               </div>
             </article>
           </section>
+
+          <article class="panel platform-trend-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Platform velocity</p>
+                <h2>OS別推移</h2>
+              </div>
+              <div class="platform-trend-legend">
+                {data.platformSeries.map((item) => (
+                  <span>
+                    <i style={`--swatch: ${PLATFORM_COLORS[item.key]}`} />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <PlatformTrendChart
+              items={data.platformSeries}
+              days={data.meta.days}
+              formatter={formatter}
+            />
+          </article>
 
           <section class="detail-grid">
             <article class="panel platform-panel">
