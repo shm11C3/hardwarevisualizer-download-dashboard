@@ -216,9 +216,11 @@ const PLATFORM_COLORS = ['#7c9cff', '#53e6c4', '#f4c06a', '#9a84f7']
 export function PlatformBreakdown({
   items,
   periodDownloads,
+  ariaLabel = 'OS別ダウンロード構成',
 }: {
   items: BreakdownItem[]
   periodDownloads: number
+  ariaLabel?: string
 }) {
   if (!items.length) {
     return (
@@ -244,7 +246,7 @@ export function PlatformBreakdown({
   return (
     <div class="platform-breakdown">
       <div class="donut-wrap">
-        <svg viewBox="0 0 120 120" role="img" aria-label="OS別ダウンロード構成">
+        <svg viewBox="0 0 120 120" role="img" aria-label={ariaLabel}>
           <circle class="donut-track" cx="60" cy="60" r="44" />
           {segments.map((segment) => (
             <circle

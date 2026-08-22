@@ -77,6 +77,17 @@ function platformBreakdown(period: number): BreakdownItem[] {
   ].map((item) => ({ ...item, share: period ? item.downloads / period : 0 }))
 }
 
+function architectureBreakdown(period: number): BreakdownItem[] {
+  const x64 = Math.round(period * 0.78)
+  const arm64 = Math.round(period * 0.17)
+  const unknown = Math.max(0, period - x64 - arm64)
+  return [
+    { key: 'x64', label: 'x64', downloads: x64, totalDownloads: 6_706 },
+    { key: 'arm64', label: 'ARM64', downloads: arm64, totalDownloads: 1_462 },
+    { key: 'unknown', label: '—', downloads: unknown, totalDownloads: 432 },
+  ].map((item) => ({ ...item, share: period ? item.downloads / period : 0 }))
+}
+
 // Full ISO timestamps, matching what the API returns for GitHub publish times.
 // Date-only values here would hide formatting bugs that only appear in production.
 const RELEASES = [
@@ -265,6 +276,7 @@ export function previewDashboard(url: URL): DashboardResponse {
     },
     series,
     platformBreakdown: platforms,
+    architectureBreakdown: architectureBreakdown(periodDownloads),
     releaseBreakdown: releases,
     topAssets: topAssets(periodDownloads),
     insights: [

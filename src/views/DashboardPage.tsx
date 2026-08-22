@@ -321,6 +321,20 @@ export function DashboardPage({
               />
             </article>
 
+            <article class="panel platform-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="panel-kicker">Architecture</p>
+                  <h2>アーキテクチャ別</h2>
+                </div>
+              </div>
+              <PlatformBreakdown
+                items={data.architectureBreakdown}
+                periodDownloads={data.summary.periodDownloads}
+                ariaLabel="アーキテクチャ別ダウンロード構成"
+              />
+            </article>
+
             <article class="panel release-panel">
               <div class="panel-header">
                 <div>
