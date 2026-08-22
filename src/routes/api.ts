@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
-import { collectDownloads } from '../lib/collector'
+import { collectAll } from '../lib/collector'
 import { buildSeriesCsv } from '../lib/export'
 import { parseDashboardQuery } from '../lib/query'
 import { BASELINE_SECURITY_HEADERS } from '../lib/security'
@@ -106,7 +106,7 @@ api.post('/admin/collect', async (context) => {
     return context.json({ error: 'unauthorized', message: '認証に失敗しました。' }, 401)
   }
 
-  const result = await collectDownloads(context.env)
+  const result = await collectAll(context.env)
   context.header('Cache-Control', 'no-store')
   return context.json({ status: 'ok', result })
 })

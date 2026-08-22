@@ -1,7 +1,13 @@
 import type { CollectionResult, GitHubRelease, GitHubReleaseAsset } from '../types'
 import { classifyAsset } from './assets'
 import { toDateKey } from './date'
-import { fetchGitHubReleases } from './github'
+import {
+  fetchGitHubReleases,
+  fetchGitHubRepositoryStats,
+  fetchGitHubTraffic,
+  type GitHubClientOptions,
+  type GitHubTrafficKind,
+} from './github'
 
 const RELEASE_CHUNK_SIZE = 200
 const ASSET_CHUNK_SIZE = 150
@@ -176,6 +182,90 @@ function errorMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 1_000)
 }
 
+function warnRepoStats(source: 'repository' | GitHubTrafficKind, error: unknown): void {
+  console.warn(
+    JSON.stringify({
+      message: 'repo stats collection failed',
+      source,
+      error: errorMessage(error),
+    }),
+  )
+}
+
+async function collectRepositoryTotals(
+  env: CloudflareBindings,
+  options: GitHubClientOptions,
+  statDate: string,
+  updatedAt: string,
+): Promise<void> {
+  try {
+    const stats = await fetchGitHubRepositoryStats(options)
+    await env.DB.prepare(
+      `
+        INSERT INTO repo_stats (stat_date, stargazers, forks, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(stat_date) DO UPDATE SET
+          stargazers = excluded.stargazers,
+          forks = excluded.forks,
+          updated_at = excluded.updated_at
+      `,
+    )
+      .bind(statDate, stats.stargazers, stats.forks, updatedAt)
+      .run()
+  } catch (error) {
+    warnRepoStats('repository', error)
+  }
+}
+
+async function collectTraffic(
+  env: CloudflareBindings,
+  options: GitHubClientOptions,
+  kind: GitHubTrafficKind,
+  updatedAt: string,
+): Promise<void> {
+  try {
+    const traffic = await fetchGitHubTraffic(options, kind)
+    const columns =
+      kind === 'views'
+        ? { count: 'views_count', uniques: 'views_uniques' }
+        : { count: 'clones_count', uniques: 'clones_uniques' }
+    const statements = traffic.map((point) =>
+      env.DB.prepare(
+        `
+          INSERT INTO repo_stats (stat_date, ${columns.count}, ${columns.uniques}, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(stat_date) DO UPDATE SET
+            ${columns.count} = excluded.${columns.count},
+            ${columns.uniques} = excluded.${columns.uniques},
+            updated_at = excluded.updated_at
+        `,
+      ).bind(point.timestamp.slice(0, 10), point.count, point.uniques, updatedAt),
+    )
+
+    if (statements.length > 0) {
+      await env.DB.batch(statements)
+    }
+  } catch (error) {
+    warnRepoStats(kind, error)
+  }
+}
+
+export async function collectRepoStats(env: CloudflareBindings, now = new Date()): Promise<void> {
+  const options: GitHubClientOptions = {
+    owner: env.GITHUB_OWNER ?? 'shm11C3',
+    repo: env.GITHUB_REPO ?? 'HardwareVisualizer',
+    ...(env.GITHUB_TOKEN ? { token: env.GITHUB_TOKEN } : {}),
+  }
+  const statDate = toDateKey(now, env.TIME_ZONE ?? 'Asia/Tokyo')
+  const updatedAt = new Date().toISOString()
+
+  await Promise.all([
+    collectRepositoryTotals(env, options, statDate, updatedAt),
+    collectTraffic(env, options, 'views', updatedAt),
+    collectTraffic(env, options, 'clones', updatedAt),
+  ])
+}
+
 export async function collectDownloads(
   env: CloudflareBindings,
   now = new Date(),
@@ -273,4 +363,13 @@ export async function collectDownloads(
       .run()
     throw error
   }
+}
+
+export async function collectAll(
+  env: CloudflareBindings,
+  now = new Date(),
+): Promise<CollectionResult> {
+  const result = await collectDownloads(env, now)
+  await collectRepoStats(env, now)
+  return result
 }

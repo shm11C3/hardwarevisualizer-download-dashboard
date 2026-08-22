@@ -6,6 +6,7 @@ import {
   buildLatestVersionMetrics,
   buildPeriodAnalytics,
   buildPlatformSeries,
+  buildRepoStats,
   calculateMilestone,
   calculateObservationStreak,
   calculateWeekdayAverages,
@@ -237,6 +238,85 @@ describe('buildDailySeries', () => {
       { date: '2026-08-21', totalDownloads: 25, dailyDownloads: null, observed: false },
       { date: '2026-08-22', totalDownloads: 40, dailyDownloads: null, observed: true },
     ])
+  })
+})
+
+describe('buildRepoStats', () => {
+  it('calculates star deltas only across consecutive observations and preserves decreases', () => {
+    const result = buildRepoStats(
+      [
+        {
+          date: '2026-08-17',
+          stargazers: 100,
+          forks: 10,
+          viewsCount: null,
+          viewsUniques: null,
+          clonesCount: null,
+          clonesUniques: null,
+        },
+        {
+          date: '2026-08-18',
+          stargazers: 105,
+          forks: 10,
+          viewsCount: 40,
+          viewsUniques: 30,
+          clonesCount: null,
+          clonesUniques: null,
+        },
+        {
+          date: '2026-08-20',
+          stargazers: 103,
+          forks: 11,
+          viewsCount: null,
+          viewsUniques: null,
+          clonesCount: 8,
+          clonesUniques: 6,
+        },
+        {
+          date: '2026-08-21',
+          stargazers: 102,
+          forks: 11,
+          viewsCount: null,
+          viewsUniques: null,
+          clonesCount: null,
+          clonesUniques: null,
+        },
+      ],
+      '2026-08-18',
+      '2026-08-21',
+    )
+
+    expect(result.stars).toEqual({
+      latest: 102,
+      series: [
+        { date: '2026-08-18', stargazers: 105, dailyDelta: 5 },
+        { date: '2026-08-20', stargazers: 103, dailyDelta: null },
+        { date: '2026-08-21', stargazers: 102, dailyDelta: -1 },
+      ],
+    })
+    expect(result.traffic).toEqual([
+      {
+        date: '2026-08-18',
+        viewsCount: 40,
+        viewsUniques: 30,
+        clonesCount: null,
+        clonesUniques: null,
+      },
+      {
+        date: '2026-08-20',
+        viewsCount: null,
+        viewsUniques: null,
+        clonesCount: 8,
+        clonesUniques: 6,
+      },
+    ])
+  })
+
+  it('returns a stable empty shape when no repository stats have been collected', () => {
+    expect(buildRepoStats([], '2026-08-01', '2026-08-22')).toEqual({
+      stars: { latest: null, series: [] },
+      traffic: [],
+    })
   })
 })
 

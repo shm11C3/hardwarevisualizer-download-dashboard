@@ -12,6 +12,7 @@ import type {
   PlatformSeriesItem,
   ReleaseBreakdownItem,
   ReleaseEvent,
+  RepoStats,
   SeriesPoint,
   UpdateHealth,
 } from '../types'
@@ -21,6 +22,16 @@ import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './da
 export interface DailyTotalRow {
   date: string
   total: number
+}
+
+export interface RepoStatRow {
+  date: string
+  stargazers: number | null
+  forks: number | null
+  viewsCount: number | null
+  viewsUniques: number | null
+  clonesCount: number | null
+  clonesUniques: number | null
 }
 
 export interface PeriodAnalytics {
@@ -203,6 +214,12 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 function round(value: number, digits = 1): number {
   const multiplier = 10 ** digits
   return Math.round(value * multiplier) / multiplier
@@ -286,6 +303,64 @@ export function buildDailySeries(
       observed: isObserved,
     }
   })
+}
+
+export function buildRepoStats(
+  inputRows: RepoStatRow[],
+  startDate: string,
+  endDate: string,
+): RepoStats {
+  const rows = inputRows
+    .map((row) => ({
+      ...row,
+      stargazers: nullableNumber(row.stargazers),
+      forks: nullableNumber(row.forks),
+      viewsCount: nullableNumber(row.viewsCount),
+      viewsUniques: nullableNumber(row.viewsUniques),
+      clonesCount: nullableNumber(row.clonesCount),
+      clonesUniques: nullableNumber(row.clonesUniques),
+    }))
+    .sort((left, right) => left.date.localeCompare(right.date))
+  const starRows = rows.filter(
+    (row): row is typeof row & { stargazers: number } =>
+      row.stargazers !== null && row.date <= endDate,
+  )
+
+  return {
+    stars: {
+      latest: starRows.at(-1)?.stargazers ?? null,
+      series: starRows
+        .map((row, index) => {
+          const previous = starRows[index - 1]
+          return {
+            date: row.date,
+            stargazers: row.stargazers,
+            dailyDelta:
+              previous && previous.date === addDays(row.date, -1)
+                ? row.stargazers - previous.stargazers
+                : null,
+          }
+        })
+        .filter((point) => point.date >= startDate),
+    },
+    traffic: rows
+      .filter(
+        (row) =>
+          row.date >= startDate &&
+          row.date <= endDate &&
+          (row.viewsCount !== null ||
+            row.viewsUniques !== null ||
+            row.clonesCount !== null ||
+            row.clonesUniques !== null),
+      )
+      .map((row) => ({
+        date: row.date,
+        viewsCount: row.viewsCount,
+        viewsUniques: row.viewsUniques,
+        clonesCount: row.clonesCount,
+        clonesUniques: row.clonesUniques,
+      })),
+  }
 }
 
 export function selectReleaseEvents(
@@ -547,6 +622,33 @@ async function dailyTotals(database: D1Database, query: DashboardQuery): Promise
     date: row.date,
     total: numberValue(row.total),
   }))
+}
+
+async function repositoryStats(
+  database: D1Database,
+  startDate: string,
+  endDate: string,
+): Promise<RepoStats> {
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          stat_date AS date,
+          stargazers,
+          forks,
+          views_count AS viewsCount,
+          views_uniques AS viewsUniques,
+          clones_count AS clonesCount,
+          clones_uniques AS clonesUniques
+        FROM repo_stats
+        WHERE stat_date <= ?
+        ORDER BY stat_date ASC
+      `,
+    )
+    .bind(endDate)
+    .all<RepoStatRow>()
+
+  return buildRepoStats(result.results ?? [], startDate, endDate)
 }
 
 async function platformTotals(
@@ -1125,6 +1227,7 @@ export async function getDashboard(
     health,
     versionRows,
     adoptionRows,
+    repoStats,
   ] = await Promise.all([
     platformBreakdown(
       env.DB,
@@ -1175,6 +1278,11 @@ export async function getDashboard(
     ),
     latestVersionRows(env.DB, query, analytics.latestSnapshotDate, analytics.effectiveBaselineDate),
     adoptionCurveRows(env.DB, query),
+    repositoryStats(
+      env.DB,
+      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+      analytics.latestSnapshotDate,
+    ),
   ])
   const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
 
@@ -1206,6 +1314,7 @@ export async function getDashboard(
       latestDayDownloads: analytics.latestDayDownloads,
       latestDayDate: analytics.latestDayDate,
     },
+    repoStats,
     series: analytics.series,
     releaseEvents: events,
     platformSeries: buildPlatformSeries(

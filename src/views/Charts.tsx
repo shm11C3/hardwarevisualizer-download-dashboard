@@ -1,4 +1,5 @@
 import { calculateWeekdayAverages } from '../lib/analytics'
+import { addDays } from '../lib/date'
 import type {
   AdoptionCurve,
   BreakdownItem,
@@ -7,6 +8,8 @@ import type {
   PlatformSeriesItem,
   ReleaseBreakdownItem,
   ReleaseEvent,
+  RepoStats,
+  RepoTrafficPoint,
   SeriesPoint,
   UpdateHealth,
 } from '../types'
@@ -121,6 +124,247 @@ export function UpdateHealthChart({
 
 function ChartEmpty({ message }: { message: string }) {
   return <div class="chart-empty">{message}</div>
+}
+
+function StarDeltaChart({
+  stats,
+  days,
+  formatter,
+}: {
+  stats: RepoStats['stars']
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const observed = stats.series.filter(
+    (point): point is typeof point & { dailyDelta: number } => point.dailyDelta !== null,
+  )
+  if (!observed.length) {
+    return <ChartEmpty message="比較できる連続したスター観測がまだありません" />
+  }
+
+  const width = 900
+  const height = 230
+  const margin = { top: 18, right: 16, bottom: 36, left: 50 }
+  const innerWidth = width - margin.left - margin.right
+  const innerHeight = height - margin.top - margin.bottom
+  const rawMaximum = Math.max(...observed.map((point) => point.dailyDelta), 0)
+  const rawMinimum = Math.min(...observed.map((point) => point.dailyDelta), 0)
+  const maximum = rawMaximum > 0 ? niceMaximum(rawMaximum) : rawMinimum === 0 ? 1 : 0
+  const minimum = rawMinimum < 0 ? -niceMaximum(Math.abs(rawMinimum)) : 0
+  const range = Math.max(maximum - minimum, 1)
+  const step = innerWidth / Math.max(stats.series.length, 1)
+  const barWidth = Math.max(2, Math.min(18, step * 0.58))
+  const y = (value: number) => margin.top + ((maximum - value) / range) * innerHeight
+  const baseline = y(0)
+  const labelCount = Math.min(6, stats.series.length)
+  const labels = Array.from({ length: labelCount }, (_, index) => {
+    const dataIndex = Math.round((index * (stats.series.length - 1)) / Math.max(labelCount - 1, 1))
+    return {
+      point: stats.series[dataIndex],
+      x: margin.left + dataIndex * step + step / 2,
+    }
+  })
+
+  return (
+    <div class="repo-chart-frame">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="スター増分の日次推移">
+        <line
+          class="chart-grid-line repo-zero-line"
+          x1={margin.left}
+          x2={width - margin.right}
+          y1={baseline}
+          y2={baseline}
+        />
+        <text class="chart-axis-text" x={margin.left - 9} y={margin.top + 3} text-anchor="end">
+          {maximum > 0 ? `+${formatNumber(maximum)}` : formatNumber(maximum)}
+        </text>
+        {minimum < 0 ? (
+          <text
+            class="chart-axis-text"
+            x={margin.left - 9}
+            y={height - margin.bottom + 3}
+            text-anchor="end"
+          >
+            {formatNumber(minimum)}
+          </text>
+        ) : null}
+        {stats.series.map((point, index) => {
+          if (point.dailyDelta === null) return null
+          const valueY = y(point.dailyDelta)
+          const barY = Math.min(valueY, baseline)
+          const barHeight = Math.max(Math.abs(valueY - baseline), 1)
+          return (
+            <rect
+              class={point.dailyDelta < 0 ? 'repo-star-bar negative' : 'repo-star-bar'}
+              x={(margin.left + index * step + (step - barWidth) / 2).toFixed(2)}
+              y={barY.toFixed(2)}
+              width={barWidth.toFixed(2)}
+              height={barHeight.toFixed(2)}
+              rx="3"
+            >
+              <title>{`${point.date}: ${point.dailyDelta > 0 ? '+' : ''}${formatNumber(point.dailyDelta)} スター`}</title>
+            </rect>
+          )
+        })}
+        {labels.map((label) => (
+          <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
+            {formatter.chartLabel(label.point?.date, days === 365)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+const TRAFFIC_SERIES = [
+  { key: 'viewsCount', label: 'views', className: 'views-count' },
+  { key: 'viewsUniques', label: 'views uniques', className: 'views-uniques' },
+  { key: 'clonesCount', label: 'clones', className: 'clones-count' },
+  { key: 'clonesUniques', label: 'clones uniques', className: 'clones-uniques' },
+] as const
+
+function trafficLinePaths(
+  series: RepoTrafficPoint[],
+  key: (typeof TRAFFIC_SERIES)[number]['key'],
+  x: (index: number) => number,
+  y: (value: number) => number,
+): string[] {
+  const segments: Point[][] = []
+  let segment: Point[] = []
+
+  series.forEach((point, index) => {
+    const value = point[key]
+    const previous = series[index - 1]
+    if (value === null || (previous !== undefined && previous.date !== addDays(point.date, -1))) {
+      if (segment.length) segments.push(segment)
+      segment = []
+    }
+    if (value !== null) {
+      segment.push({ x: x(index), y: y(value) })
+    }
+  })
+  if (segment.length) segments.push(segment)
+
+  return segments.filter((points) => points.length > 1).map(linePath)
+}
+
+function TrafficChart({
+  series,
+  days,
+  formatter,
+}: {
+  series: RepoTrafficPoint[]
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const values = series.flatMap((point) =>
+    TRAFFIC_SERIES.map((item) => point[item.key]).filter(
+      (value): value is number => value !== null,
+    ),
+  )
+  if (!values.length) return <ChartEmpty message="トラフィックデータがありません" />
+
+  const width = 900
+  const height = 230
+  const margin = { top: 18, right: 16, bottom: 36, left: 50 }
+  const innerWidth = width - margin.left - margin.right
+  const innerHeight = height - margin.top - margin.bottom
+  const maximum = niceMaximum(Math.max(...values, 1))
+  const x = (index: number) => margin.left + (index / Math.max(series.length - 1, 1)) * innerWidth
+  const y = (value: number) => margin.top + innerHeight - (value / maximum) * innerHeight
+  const labelCount = Math.min(6, series.length)
+  const labels = Array.from({ length: labelCount }, (_, index) => {
+    const dataIndex = Math.round((index * (series.length - 1)) / Math.max(labelCount - 1, 1))
+    return { point: series[dataIndex], x: x(dataIndex) }
+  })
+
+  return (
+    <div class="repo-chart-frame">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="views と clones の日次推移">
+        {Array.from({ length: 4 }, (_, index) => {
+          const value = (maximum / 3) * index
+          return (
+            <>
+              <line
+                class="chart-grid-line"
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text class="chart-axis-text" x={margin.left - 9} y={y(value) + 3} text-anchor="end">
+                {formatNumber(value)}
+              </text>
+            </>
+          )
+        })}
+        {TRAFFIC_SERIES.map((item) => (
+          <>
+            {trafficLinePaths(series, item.key, x, y).map((path) => (
+              <path class={`repo-traffic-line ${item.className}`} d={path} />
+            ))}
+            {series.map((point, index) => {
+              const value = point[item.key]
+              if (value === null) return null
+              return (
+                <circle
+                  class={`repo-traffic-point ${item.className}`}
+                  cx={x(index)}
+                  cy={y(value)}
+                  r="2.8"
+                >
+                  <title>{`${point.date} · ${item.label}: ${formatNumber(value)}`}</title>
+                </circle>
+              )
+            })}
+          </>
+        ))}
+        {labels.map((label) => (
+          <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
+            {formatter.chartLabel(label.point?.date, days === 365)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+export function RepoStatsCharts({
+  stats,
+  days,
+  formatter,
+}: {
+  stats: RepoStats
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  return (
+    <div class={stats.traffic.length ? 'repo-stats-charts with-traffic' : 'repo-stats-charts'}>
+      <section class="repo-stats-chart-section">
+        <div class="repo-chart-heading">
+          <h3>スター増分</h3>
+          <span>日次</span>
+        </div>
+        <StarDeltaChart stats={stats.stars} days={days} formatter={formatter} />
+      </section>
+      {stats.traffic.length ? (
+        <section class="repo-stats-chart-section">
+          <div class="repo-chart-heading traffic-heading">
+            <h3>GitHub Traffic</h3>
+            <div class="repo-traffic-legend">
+              {TRAFFIC_SERIES.map((item) => (
+                <span>
+                  <i class={item.className} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <TrafficChart series={stats.traffic} days={days} formatter={formatter} />
+        </section>
+      ) : null}
+    </div>
+  )
 }
 
 const ADOPTION_COLORS = ['#9bb2ff', '#53e6c4', '#f4c06a', '#c39cff', '#ff8797']

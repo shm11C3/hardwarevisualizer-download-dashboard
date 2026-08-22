@@ -1,4 +1,5 @@
 -- Synthetic local demo data. Do not use as production history.
+DELETE FROM repo_stats;
 DELETE FROM snapshots;
 DELETE FROM assets;
 DELETE FROM releases;
@@ -742,4 +743,20 @@ INSERT INTO snapshots (snapshot_date, captured_at, asset_id, download_count) VAL
 INSERT INTO snapshots (snapshot_date, captured_at, asset_id, download_count) VALUES ('2026-08-22', '2026-08-22T00:10:00Z', 9101, 814);
 INSERT INTO snapshots (snapshot_date, captured_at, asset_id, download_count) VALUES ('2026-08-22', '2026-08-22T00:10:00Z', 9102, 486);
 INSERT INTO snapshots (snapshot_date, captured_at, asset_id, download_count) VALUES ('2026-08-22', '2026-08-22T00:10:00Z', 9001, 592);
+INSERT INTO repo_stats (stat_date, stargazers, forks, views_count, views_uniques, clones_count, clones_uniques, updated_at) VALUES
+  ('2026-08-08', 1840, 112, 148, 91, 25, 17, '2026-08-22T00:10:00Z'),
+  ('2026-08-09', 1842, 112, 163, 99, 27, 18, '2026-08-22T00:10:00Z'),
+  ('2026-08-10', 1842, 112, 151, 94, 24, 16, '2026-08-22T00:10:00Z'),
+  ('2026-08-11', 1844, 113, 188, 112, 34, 22, '2026-08-22T00:10:00Z'),
+  ('2026-08-12', 1845, 113, 176, 107, 29, 19, '2026-08-22T00:10:00Z'),
+  ('2026-08-13', 1845, 113, 205, 121, 38, 24, '2026-08-22T00:10:00Z'),
+  ('2026-08-14', 1848, 114, 231, 136, 41, 27, '2026-08-22T00:10:00Z'),
+  ('2026-08-15', 1849, 114, 219, 130, 36, 23, '2026-08-22T00:10:00Z'),
+  ('2026-08-16', 1851, 115, 246, 145, 44, 29, '2026-08-22T00:10:00Z'),
+  ('2026-08-17', 1851, 115, 238, 141, 39, 26, '2026-08-22T00:10:00Z'),
+  ('2026-08-18', 1850, 115, 264, 153, 47, 31, '2026-08-22T00:10:00Z'),
+  ('2026-08-19', 1853, 116, 291, 169, 53, 35, '2026-08-22T00:10:00Z'),
+  ('2026-08-20', 1854, 116, 278, 162, 48, 32, '2026-08-22T00:10:00Z'),
+  ('2026-08-21', 1856, 117, 315, 184, 58, 38, '2026-08-22T00:10:00Z'),
+  ('2026-08-22', 1857, 117, 302, 178, 55, 36, '2026-08-22T00:10:00Z');
 INSERT INTO collection_runs (id, started_at, finished_at, status, snapshot_date, fetched_releases, fetched_assets, duration_ms) VALUES ('demo-run', '2026-08-21T15:10:00Z', '2026-08-21T15:10:01Z', 'success', '2026-08-22', 3, 8, 1042);

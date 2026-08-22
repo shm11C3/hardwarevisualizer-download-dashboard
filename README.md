@@ -12,6 +12,7 @@ HardwareVisualizer の GitHub Release アセット別ダウンロード数を日
 - GitHub Releases API から全リリースと全アセットの累積 `download_count` を取得
 - Cloudflare Cron Triggers で毎日 00:10 JST に自動収集
 - D1 に日次スナップショットを保存し、前回値との差を算出
+- リポジトリのスター・フォーク数と GitHub Traffic（views / clones）を日次保存し、注目度の推移を表示
 - 7日、30日、90日、1年の表示切り替え
 - 安定版のみ、プレリリースを含む、の切り替え
 - インストーラー、配布物全体、全アセット、の切り替え
@@ -30,7 +31,7 @@ HardwareVisualizer の GitHub Release アセット別ダウンロード数を日
 ## 構成
 
 ```text
-GitHub Releases API
+GitHub APIs (Releases / Repository / Traffic)
         │
         │ cumulative download_count
         ▼
@@ -43,7 +44,7 @@ Cloudflare Worker + Hono
         │
         ▼
 Cloudflare D1
-  releases / assets / snapshots / collection_runs
+  releases / assets / snapshots / repo_stats / collection_runs
         │
         ▼
 Server-rendered dashboard
@@ -168,7 +169,16 @@ openssl rand -hex 32
 
 `GITHUB_TOKEN` は **Cloudflare Workers では実質必須** です。GitHub の未認証レート制限は送信元 IP ごとに1時間あたり60リクエストですが、Workers の外向き IP は他の多数の利用者と共有されるため、この枠は自分が使う前に消費されています。未設定のまま収集すると 403 `API rate limit exceeded` で失敗します。
 
-公開リポジトリのみを対象とするため、必要な権限はごく僅かです。Fine-grained personal access token なら Public Repositories の読み取りのみ、classic token ならスコープを一切付与しない状態で構いません。いずれの場合も認証済み扱いとなり、上限が1時間あたり5,000リクエストに上がります。
+Release、スター、フォークの収集だけなら公開リポジトリの読み取り権限で足ります。GitHub Traffic API の views / clones には対象リポジトリへの push 権限が必要なため、Fine-grained personal access token では追加の権限設定が必要です。
+
+#### Traffic API 用に `GITHUB_TOKEN` をアップグレード
+
+1. GitHub の Settings、Developer settings、Personal access tokens、Fine-grained tokens からトークンを新規作成または再作成する
+2. Repository access で対象の `HardwareVisualizer` リポジトリを選ぶ
+3. Repository permissions の **Administration** を **Read-only** にする
+4. `npx wrangler secret put GITHUB_TOKEN` を実行し、新しいトークンへ差し替える
+
+権限が不足して Traffic API が 403 を返しても、ダウンロードとスター・フォークの収集は継続します。その場合、画面にはスターだけを表示し、トラフィックに必要な権限を案内します。Traffic API が返す日別データは直近14日分だけで、それより前はバックフィルできません。早く収集を開始するほど長い履歴を残せます。
 
 ### 4. デプロイ
 
@@ -252,6 +262,10 @@ GitHub Release Asset と、自動判定した OS、アーキテクチャ、配�
 
 `(snapshot_date, asset_id)` を主キーに、その日の累積 `download_count` を保持します。
 
+### `repo_stats`
+
+日付ごとのスター・フォーク累積値と、GitHub Traffic API が返す views / clones の count・uniques を保持します。スター・フォークは JST の収集日、Traffic は GitHub が返す UTC 日付をキーに保存し、取得できなかった項目は `NULL` のまま残します。
+
 ### `collection_runs`
 
 収集開始、終了、成功または失敗、取得件数、処理時間、エラー概要を保持します。
@@ -277,7 +291,9 @@ npm test
 ```text
 .
 ├── .github/workflows/deploy.yml
-├── migrations/0001_initial.sql
+├── migrations/
+│   ├── 0001_initial.sql
+│   └── 0002_repo_stats.sql
 ├── public/            静的アセットのみ (CSS, アイコン, _headers)
 │   └── styles.css
 ├── seed/demo.sql
@@ -309,6 +325,7 @@ npm test
 
 - Cron Trigger の時刻は UTC です。
 - 本番では `GITHUB_TOKEN` を必ず設定してください。未認証のレート制限は送信元 IP 単位で、Workers の外向き IP は共有されているため、未設定だと 403 で収集が失敗します。ローカル開発では自宅などの専有 IP から発信するため未設定でも成功しますが、本番で同じとは限りません。
+- Traffic API は直近14日分だけを返します。収集停止中に14日を超えて失われた views / clones の日別履歴は復元できません。
 - `GITHUB_TOKEN` を設定する場合は必ず有効な値にしてください。無効な値を入れると GitHub が全リクエストを 401 で拒否し、未設定の場合より状況が悪化します。
 - 日次グラフの日付は、スナップショットを取得した日です。00:10 JST に収集するため、ある日付のバーはおおむね前日中のダウンロードを表します。
 - 収集が1日以上欠けた場合、期間合計には差分を含めますが、日次グラフでは欠損をまたぐ値を表示しません。

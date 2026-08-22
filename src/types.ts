@@ -54,6 +54,28 @@ export interface SeriesPoint {
   observed: boolean
 }
 
+export interface RepoStarPoint {
+  date: string
+  stargazers: number
+  dailyDelta: number | null
+}
+
+export interface RepoTrafficPoint {
+  date: string
+  viewsCount: number | null
+  viewsUniques: number | null
+  clonesCount: number | null
+  clonesUniques: number | null
+}
+
+export interface RepoStats {
+  stars: {
+    latest: number | null
+    series: RepoStarPoint[]
+  }
+  traffic: RepoTrafficPoint[]
+}
+
 export interface ReleaseEvent {
   tag: string
   label: string
@@ -167,6 +189,7 @@ export interface DashboardResponse {
     latestDayDownloads: number | null
     latestDayDate: string | null
   }
+  repoStats: RepoStats
   series: SeriesPoint[]
   releaseEvents: ReleaseEvent[]
   platformSeries: PlatformSeriesItem[]
