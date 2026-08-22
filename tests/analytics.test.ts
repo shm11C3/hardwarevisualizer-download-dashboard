@@ -6,8 +6,21 @@ import {
   buildLatestVersionMetrics,
   buildPeriodAnalytics,
   buildPlatformSeries,
+  calculateMilestone,
+  calculateObservationStreak,
+  calculateWeekdayAverages,
   selectReleaseEvents,
 } from '../src/lib/analytics'
+import type { SeriesPoint } from '../src/types'
+
+function point(
+  date: string,
+  totalDownloads: number,
+  dailyDownloads: number | null,
+  observed = true,
+): SeriesPoint {
+  return { date, totalDownloads, dailyDownloads, observed }
+}
 
 describe('buildPeriodAnalytics', () => {
   it('uses the first snapshot as a baseline instead of counting historical totals', () => {
@@ -251,5 +264,50 @@ describe('buildLatestVersionMetrics', () => {
         0,
       ).latestVersionShare,
     ).toBeNull()
+  })
+})
+
+describe('calculateWeekdayAverages', () => {
+  it('groups JST calendar date keys from Monday through Sunday and excludes missing deltas', () => {
+    const result = calculateWeekdayAverages([
+      point('2026-08-17', 110, 10),
+      point('2026-08-18', 140, 30),
+      point('2026-08-24', 160, 50),
+      point('2026-08-25', 160, null, false),
+    ])
+
+    expect(result.map((item) => item.label)).toEqual(['月', '火', '水', '木', '金', '土', '日'])
+    expect(result[0]).toMatchObject({ average: 30, observations: 2 })
+    expect(result[1]).toMatchObject({ average: 30, observations: 1 })
+  })
+})
+
+describe('record calculations', () => {
+  it('finds the latest 1/5 milestone, its first visible date, and the next target', () => {
+    expect(
+      calculateMilestone([
+        point('2026-08-19', 4_900, null),
+        point('2026-08-20', 5_010, 110),
+        point('2026-08-21', 7_400, 2_390),
+      ]),
+    ).toEqual({ reached: 5_000, reachedAt: '2026-08-20', next: 10_000, remaining: 2_600 })
+
+    expect(calculateMilestone([point('2026-08-21', 12_300, null)])).toEqual({
+      reached: 10_000,
+      reachedAt: null,
+      next: 50_000,
+      remaining: 37_700,
+    })
+  })
+
+  it('counts observed snapshots continuously from the series tail', () => {
+    expect(
+      calculateObservationStreak([
+        point('2026-08-18', 100, null, true),
+        point('2026-08-19', 100, null, false),
+        point('2026-08-20', 110, null, true),
+        point('2026-08-21', 120, 10, true),
+      ]),
+    ).toBe(2)
   })
 })

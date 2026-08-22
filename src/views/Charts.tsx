@@ -1,3 +1,4 @@
+import { calculateWeekdayAverages } from '../lib/analytics'
 import type {
   AdoptionCurve,
   BreakdownItem,
@@ -215,6 +216,86 @@ export function AdoptionCurveChart({ curves }: { curves: AdoptionCurve[] }) {
           </a>
         ))}
       </nav>
+    </div>
+  )
+}
+
+export function WeekdayPattern({ series }: { series: SeriesPoint[] }) {
+  const weekdays = calculateWeekdayAverages(series)
+  const observationCount = weekdays.reduce((sum, item) => sum + item.observations, 0)
+
+  if (observationCount < 28) {
+    return (
+      <div class="weekday-chart">
+        <ChartEmpty message="観測日数が足りません(28日以上で表示)" />
+      </div>
+    )
+  }
+
+  const width = 700
+  const height = 220
+  const margin = { top: 25, right: 12, bottom: 32, left: 12 }
+  const innerHeight = height - margin.top - margin.bottom
+  const step = (width - margin.left - margin.right) / weekdays.length
+  const barWidth = Math.min(54, step * 0.56)
+  const maximum = Math.max(...weekdays.map((item) => item.average), 1)
+  const highest = weekdays.find((item) => item.average === maximum) ?? weekdays[0]
+
+  return (
+    <div class="weekday-chart">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="曜日別の平均日次ダウンロード数"
+      >
+        <line
+          class="chart-grid-line"
+          x1={margin.left}
+          x2={width - margin.right}
+          y1={margin.top + innerHeight}
+          y2={margin.top + innerHeight}
+        />
+        {weekdays.map((item, index) => {
+          const barHeight = (item.average / maximum) * innerHeight
+          const x = margin.left + index * step + (step - barWidth) / 2
+          const y = margin.top + innerHeight - barHeight
+          const active = item.key === highest?.key
+          return (
+            <>
+              <rect
+                class={active ? 'weekday-bar active' : 'weekday-bar'}
+                x={x.toFixed(2)}
+                y={y.toFixed(2)}
+                width={barWidth.toFixed(2)}
+                height={Math.max(barHeight, 1).toFixed(2)}
+                rx="7"
+              >
+                <title>{`${item.label}曜日: 平均 ${formatNumber(item.average, 1)} 件`}</title>
+              </rect>
+              <text
+                class={active ? 'weekday-value active' : 'weekday-value'}
+                x={x + barWidth / 2}
+                y={Math.max(14, y - 8)}
+                text-anchor="middle"
+              >
+                {formatNumber(item.average, 1)}
+              </text>
+              <text
+                class="chart-axis-text"
+                x={x + barWidth / 2}
+                y={height - 8}
+                text-anchor="middle"
+              >
+                {item.label}
+              </text>
+            </>
+          )
+        })}
+      </svg>
+      <p class="weekday-caption">
+        最も高い曜日は<strong>{highest?.label}曜日</strong>、平均{' '}
+        <strong>{formatNumber(highest?.average ?? 0, 1)} 件</strong>です。
+      </p>
     </div>
   )
 }

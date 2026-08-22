@@ -369,6 +369,18 @@ export function previewDashboard(url: URL): DashboardResponse {
         value: '100%',
         body: `${days + 1} / ${days + 1} 日分のスナップショットを確認できました。`,
       },
+      {
+        kind: 'milestone',
+        title: '累計マイルストーン',
+        value: '10,000 件',
+        body: '表示期間より前に到達。次の 50,000 件までの残数を表示します。',
+      },
+      {
+        kind: 'streak',
+        title: '観測ストリーク',
+        value: `${days} 日`,
+        body: '最新日から連続してスナップショットを観測できています。',
+      },
     ],
   }
 }

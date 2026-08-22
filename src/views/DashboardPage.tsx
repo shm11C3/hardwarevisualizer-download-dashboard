@@ -15,6 +15,7 @@ import {
   PlatformTrendChart,
   ReleaseBreakdown,
   UpdateHealthChart,
+  WeekdayPattern,
 } from './Charts'
 import { Controls } from './Controls'
 import {
@@ -191,6 +192,17 @@ const INSIGHT_ICONS: Record<DashboardInsight['kind'], string> = {
   peak: '⌁',
   data: '✓',
   latest: '◎',
+  milestone: '◆',
+  streak: '∞',
+}
+
+function exportHref(path: string, query: DashboardQuery): string {
+  const params = new URLSearchParams({
+    days: String(query.days),
+    channel: query.channel,
+    scope: query.scope,
+  })
+  return `${path}?${params.toString()}`
 }
 
 function Insights({ items }: { items: DashboardInsight[] }) {
@@ -290,9 +302,17 @@ export function DashboardPage({
                   <p class="panel-kicker">Velocity</p>
                   <h2>日次ダウンロード</h2>
                 </div>
-                <div class="chart-legend">
-                  <span class="legend-bar" /> 日次 <span class="legend-line" /> 7日移動平均
-                  <span class="legend-release" /> リリース
+                <div class="daily-panel-tools">
+                  <nav class="export-links" aria-label="表示データのエクスポート">
+                    <a href={exportHref('/api/export.csv', query)}>CSV</a>
+                    <a href={exportHref('/api/dashboard', query)} target="_blank" rel="noreferrer">
+                      JSON
+                    </a>
+                  </nav>
+                  <div class="chart-legend">
+                    <span class="legend-bar" /> 日次 <span class="legend-line" /> 7日移動平均
+                    <span class="legend-release" /> リリース
+                  </div>
                 </div>
               </div>
               <DailyChart
@@ -391,6 +411,17 @@ export function DashboardPage({
             </div>
             <AdoptionCurveChart curves={data.adoptionCurves} />
           </section>
+
+          <article class="panel weekday-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Weekly rhythm</p>
+                <h2>曜日パターン</h2>
+              </div>
+              <span class="panel-meta">観測日の平均</span>
+            </div>
+            <WeekdayPattern series={data.series} />
+          </article>
 
           <section class="detail-grid">
             <article class="panel platform-panel">
