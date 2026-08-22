@@ -177,6 +177,25 @@ curl -X POST https://YOUR_WORKER_DOMAIN/api/admin/collect \
 
 以後は `wrangler.jsonc` の Cron Trigger により、毎日 15:10 UTC、つまり 00:10 JST に収集されます。
 
+## GitHub Actions での自動デプロイ
+
+`.github/workflows/deploy.yml` により、`main` へ push すると型チェック、Biome、テストを実行し、通過した場合のみ D1 マイグレーションの適用と Worker のデプロイを行います。Pull Request では検証のみ実行し、デプロイはしません。
+
+マイグレーションはデプロイより先に実行します。スキーマが無い状態で Worker を公開すると、全リクエストが 500 になるためです。
+
+### 必要な GitHub Secrets
+
+リポジトリの Settings、Secrets and variables、Actions から次の2つを登録します。
+
+| 名前 | 内容 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Workers と D1 の編集権限を持つ API トークン |
+| `CLOUDFLARE_ACCOUNT_ID` | デプロイ先アカウントの ID |
+
+API トークンは Cloudflare ダッシュボードの My Profile、API Tokens から、Edit Cloudflare Workers テンプレートを基に作成します。D1 の編集権限を含めてください。
+
+`COLLECT_TOKEN` と `GITHUB_TOKEN` は Worker 側の Secret です。GitHub Secrets ではなく `npx wrangler secret put` で登録します。デプロイでは上書きされないため、登録は初回のみで済みます。
+
 ## API
 
 ### `GET /api/dashboard`
@@ -247,6 +266,7 @@ npm test
 
 ```text
 .
+├── .github/workflows/deploy.yml
 ├── migrations/0001_initial.sql
 ├── public/
 │   ├── app.js
