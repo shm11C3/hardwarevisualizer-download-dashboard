@@ -12,6 +12,7 @@ import type {
   ReleaseBreakdownItem,
   ReleaseEvent,
   SeriesPoint,
+  UpdateHealth,
 } from '../types'
 import { architectureLabel, platformLabel } from './assets'
 import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './date'
@@ -93,6 +94,24 @@ interface AssetRow {
   total_downloads: number
 }
 
+interface KindDailyRow {
+  date: string
+  installer_total: number
+  updater_total: number
+}
+
+export interface LatestVersionRow {
+  tag: string
+  publishedAt: string
+  downloads: number
+}
+
+export interface LatestVersionMetrics {
+  latestVersionShare: number | null
+  latestVersionTag: string | null
+  latestVersionPublishedAt: string | null
+}
+
 function numberValue(value: unknown): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -156,6 +175,33 @@ export function buildPlatformSeries(
   })
 }
 
+export function buildDailySeries(
+  inputRows: DailyTotalRow[],
+  startDate: string,
+  endDate: string,
+): SeriesPoint[] {
+  const rows = normalizeRows(inputRows)
+  const observed = new Map(rows.map((row) => [row.date, row.total]))
+  let carriedTotal = findLastOnOrBefore(rows, startDate)?.total ?? 0
+
+  return enumerateDates(startDate, endDate).map((date) => {
+    const currentObserved = observed.get(date)
+    const isObserved = currentObserved !== undefined
+    if (isObserved) carriedTotal = currentObserved
+    const previousObserved = observed.get(addDays(date, -1))
+
+    return {
+      date,
+      totalDownloads: carriedTotal,
+      dailyDownloads:
+        isObserved && previousObserved !== undefined
+          ? Math.max(0, carriedTotal - previousObserved)
+          : null,
+      observed: isObserved,
+    }
+  })
+}
+
 export function selectReleaseEvents(
   rows: ReleaseEventRow[],
   startDate: string,
@@ -183,6 +229,25 @@ export function selectReleaseEvents(
   )
 }
 
+export function buildLatestVersionMetrics(
+  rows: LatestVersionRow[],
+  periodDownloads: number,
+): LatestVersionMetrics {
+  const latest = [...rows].sort((left, right) => {
+    const byDate = right.publishedAt.localeCompare(left.publishedAt)
+    return byDate || left.tag.localeCompare(right.tag)
+  })[0]
+
+  return {
+    latestVersionShare:
+      latest && periodDownloads > 0
+        ? round(Math.min(1, Math.max(0, latest.downloads / periodDownloads)), 4)
+        : null,
+    latestVersionTag: latest?.tag ?? null,
+    latestVersionPublishedAt: latest?.publishedAt ?? null,
+  }
+}
+
 export function buildPeriodAnalytics(
   inputRows: DailyTotalRow[],
   days: DashboardQuery['days'],
@@ -194,34 +259,12 @@ export function buildPeriodAnalytics(
     return null
   }
 
-  const observed = new Map(rows.map((row) => [row.date, row.total]))
   const requestedStartDate = addDays(latest.date, -(days - 1))
   const requestedBaseline = findLastOnOrBefore(rows, addDays(requestedStartDate, -1))
   const baseline = requestedBaseline ?? first
   const seriesStart = laterDate(requestedStartDate, baseline.date)
-  const series: SeriesPoint[] = []
-  let carriedTotal = findLastOnOrBefore(rows, seriesStart)?.total ?? baseline.total
-
-  for (const date of enumerateDates(seriesStart, latest.date)) {
-    const currentObserved = observed.get(date)
-    const isObserved = currentObserved !== undefined
-    if (isObserved) {
-      carriedTotal = currentObserved
-    }
-
-    const previousObserved = observed.get(addDays(date, -1))
-    const dailyDownloads =
-      isObserved && previousObserved !== undefined
-        ? Math.max(0, carriedTotal - previousObserved)
-        : null
-
-    series.push({
-      date,
-      totalDownloads: carriedTotal,
-      dailyDownloads,
-      observed: isObserved,
-    })
-  }
+  const series = buildDailySeries(rows, seriesStart, latest.date)
+  const observed = new Map(rows.map((row) => [row.date, row.total]))
 
   const periodDownloads = Math.max(0, latest.total - baseline.total)
   const elapsedDays = Math.max(0, daysBetween(baseline.date, latest.date))
@@ -394,6 +437,119 @@ async function releaseEvents(
     timeZone,
     channel,
   )
+}
+
+async function updateHealth(
+  database: D1Database,
+  query: DashboardQuery,
+  startDate: string,
+  endDate: string,
+  baselineDate: string,
+): Promise<UpdateHealth> {
+  const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
+  const result = await database
+    .prepare(
+      `
+        SELECT
+          s.snapshot_date AS date,
+          SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS installer_total,
+          SUM(CASE WHEN a.kind = 'updater' THEN s.download_count ELSE 0 END) AS updater_total
+        FROM snapshots s
+        INNER JOIN assets a ON a.id = s.asset_id
+        INNER JOIN releases r ON r.id = a.release_id
+        WHERE r.draft = 0
+          ${channelClause}
+          AND a.kind IN ('installer', 'updater')
+          AND s.snapshot_date >= ?
+          AND s.snapshot_date <= ?
+        GROUP BY s.snapshot_date
+        ORDER BY s.snapshot_date ASC
+      `,
+    )
+    .bind(baselineDate, endDate)
+    .all<KindDailyRow>()
+
+  const rows = result.results ?? []
+  const installerRows = rows.map((row) => ({ date: row.date, total: row.installer_total }))
+  const updaterRows = rows.map((row) => ({ date: row.date, total: row.updater_total }))
+  const periodTotal = (kindRows: DailyTotalRow[]) => {
+    const normalized = normalizeRows(kindRows)
+    const baseline = findLastOnOrBefore(normalized, baselineDate)?.total ?? 0
+    const latest = findLastOnOrBefore(normalized, endDate)?.total ?? baseline
+    return Math.max(0, latest - baseline)
+  }
+
+  return {
+    installer: {
+      periodDownloads: periodTotal(installerRows),
+      series: buildDailySeries(installerRows, startDate, endDate),
+    },
+    updater: {
+      periodDownloads: periodTotal(updaterRows),
+      series: buildDailySeries(updaterRows, startDate, endDate),
+    },
+  }
+}
+
+async function latestVersionRows(
+  database: D1Database,
+  query: DashboardQuery,
+  currentDate: string,
+  baselineDate: string,
+): Promise<LatestVersionRow[]> {
+  const releaseChannelClause = query.channel === 'stable' ? 'AND prerelease = 0' : ''
+  const assetScopeClause =
+    query.scope === 'installers'
+      ? "AND a.kind = 'installer'"
+      : query.scope === 'distribution'
+        ? "AND a.kind IN ('installer', 'updater', 'archive')"
+        : ''
+  const result = await database
+    .prepare(
+      `
+        WITH latest_tag AS (
+          SELECT tag_name AS tag, MAX(published_at) AS publishedAt
+          FROM releases
+          WHERE draft = 0
+            ${releaseChannelClause}
+            AND published_at IS NOT NULL
+          GROUP BY tag_name
+          ORDER BY publishedAt DESC, tag ASC
+          LIMIT 1
+        ), current_snapshot AS (
+          SELECT asset_id, download_count FROM snapshots WHERE snapshot_date = ?
+        ), baseline_snapshot AS (
+          SELECT asset_id, download_count FROM snapshots WHERE snapshot_date = ?
+        )
+        SELECT
+          latest_tag.tag,
+          latest_tag.publishedAt,
+          SUM(
+            CASE
+              WHEN current_snapshot.download_count > COALESCE(baseline_snapshot.download_count, 0)
+              THEN current_snapshot.download_count - COALESCE(baseline_snapshot.download_count, 0)
+              ELSE 0
+            END
+          ) AS downloads
+        FROM latest_tag
+        INNER JOIN releases r ON r.tag_name = latest_tag.tag
+          AND r.draft = 0
+          ${query.channel === 'stable' ? 'AND r.prerelease = 0' : ''}
+        LEFT JOIN assets a ON a.release_id = r.id
+          ${assetScopeClause}
+        LEFT JOIN current_snapshot ON current_snapshot.asset_id = a.id
+        LEFT JOIN baseline_snapshot ON baseline_snapshot.asset_id = a.id
+        GROUP BY latest_tag.tag, latest_tag.publishedAt
+      `,
+    )
+    .bind(currentDate, baselineDate)
+    .all<{ tag: string; publishedAt: string; downloads: number }>()
+
+  return (result.results ?? []).map((row) => ({
+    tag: row.tag,
+    publishedAt: row.publishedAt,
+    downloads: numberValue(row.downloads),
+  }))
 }
 
 function share(
@@ -661,6 +817,7 @@ function buildInsights(
   analytics: PeriodAnalytics,
   platforms: BreakdownItem[],
   releases: ReleaseBreakdownItem[],
+  latestVersion: LatestVersionMetrics,
 ): DashboardInsight[] {
   const topPlatform = platforms[0]
   const topRelease = releases[0]
@@ -669,6 +826,13 @@ function buildInsights(
       (point): point is SeriesPoint & { dailyDownloads: number } => point.dailyDownloads !== null,
     )
     .sort((left, right) => right.dailyDownloads - left.dailyDownloads)[0]
+  const publishedDuringPeriod =
+    latestVersion.latestVersionPublishedAt !== null &&
+    latestVersion.latestVersionPublishedAt.slice(0, 10) >= analytics.requestedStartDate &&
+    latestVersion.latestVersionPublishedAt.slice(0, 10) <= analytics.latestSnapshotDate
+  const publicationNote = publishedDuringPeriod
+    ? ` ${latestVersion.latestVersionTag ?? '最新バージョン'} は期間の途中で公開されています。`
+    : ''
 
   let growthValue = '比較データなし'
   let growthBody = '同じ長さの直前期間が揃うと、増減率を表示します。'
@@ -702,6 +866,20 @@ function buildInsights(
       body: topRelease
         ? `期間内 ${formatNumber(topRelease.downloads)} 件で、対象ダウンロードを最も牽引しています。`
         : '対象条件に一致するリリースがありません。',
+    },
+    {
+      kind: 'latest',
+      title: '最新バージョン比率',
+      value:
+        latestVersion.latestVersionShare === null
+          ? '算出不可'
+          : `${formatNumber(latestVersion.latestVersionShare * 100)}%`,
+      body:
+        latestVersion.latestVersionShare === null
+          ? '期間内の対象ダウンロードがあると算出します。'
+          : latestVersion.latestVersionShare < 0.5
+            ? `${latestVersion.latestVersionTag ?? '最新バージョン'} の比率が低く、古いバージョンへの導線が残っている可能性があります。${publicationNote}`
+            : `${latestVersion.latestVersionTag ?? '最新バージョン'} が期間内ダウンロードの中心です。${publicationNote}`,
     },
     {
       kind: 'peak',
@@ -750,48 +928,63 @@ export async function getDashboard(
     }
   }
 
-  const [platforms, architectures, releases, assets, platformRows, events] = await Promise.all([
-    platformBreakdown(
-      env.DB,
-      query,
-      analytics.latestSnapshotDate,
-      analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
-    ),
-    architectureBreakdown(
-      env.DB,
-      query,
-      analytics.latestSnapshotDate,
-      analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
-    ),
-    releaseBreakdown(
-      env.DB,
-      query,
-      analytics.latestSnapshotDate,
-      analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
-    ),
-    topAssets(
-      env.DB,
-      query,
-      analytics.latestSnapshotDate,
-      analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
-    ),
-    platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
-    releaseEvents(
-      env.DB,
-      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
-      analytics.latestSnapshotDate,
-      timeZone,
-      query.channel,
-    ),
-  ])
+  const [platforms, architectures, releases, assets, platformRows, events, health, versionRows] =
+    await Promise.all([
+      platformBreakdown(
+        env.DB,
+        query,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+        analytics.periodDownloads,
+        analytics.totalDownloads,
+      ),
+      architectureBreakdown(
+        env.DB,
+        query,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+        analytics.periodDownloads,
+        analytics.totalDownloads,
+      ),
+      releaseBreakdown(
+        env.DB,
+        query,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+        analytics.periodDownloads,
+        analytics.totalDownloads,
+      ),
+      topAssets(
+        env.DB,
+        query,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+        analytics.periodDownloads,
+        analytics.totalDownloads,
+      ),
+      platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
+      releaseEvents(
+        env.DB,
+        analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+        analytics.latestSnapshotDate,
+        timeZone,
+        query.channel,
+      ),
+      updateHealth(
+        env.DB,
+        query,
+        analytics.series[0]?.date ?? analytics.requestedStartDate,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+      ),
+      latestVersionRows(
+        env.DB,
+        query,
+        analytics.latestSnapshotDate,
+        analytics.effectiveBaselineDate,
+      ),
+    ])
+  const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
 
   return {
     status: 'ok',
@@ -832,6 +1025,8 @@ export async function getDashboard(
     architectureBreakdown: architectures,
     releaseBreakdown: releases,
     topAssets: assets,
-    insights: buildInsights(analytics, platforms, releases),
+    updateHealth: health,
+    ...latestVersion,
+    insights: buildInsights(analytics, platforms, releases, latestVersion),
   }
 }

@@ -13,6 +13,7 @@ import {
   PlatformBreakdown,
   PlatformTrendChart,
   ReleaseBreakdown,
+  UpdateHealthChart,
 } from './Charts'
 import { Controls } from './Controls'
 import {
@@ -188,6 +189,7 @@ const INSIGHT_ICONS: Record<DashboardInsight['kind'], string> = {
   release: '◇',
   peak: '⌁',
   data: '✓',
+  latest: '◎',
 }
 
 function Insights({ items }: { items: DashboardInsight[] }) {
@@ -341,6 +343,42 @@ export function DashboardPage({
               formatter={formatter}
             />
           </article>
+
+          <section class="panel update-health-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Acquisition &amp; retention proxy</p>
+                <h2>新規 vs 更新</h2>
+              </div>
+              <div class="update-health-legend">
+                <span>
+                  <i class="installer" /> installer
+                </span>
+                <span>
+                  <i class="updater" /> updater
+                </span>
+              </div>
+            </div>
+            <div class="update-health-totals">
+              <div>
+                <span>installer 期間合計</span>
+                <strong>{formatNumber(data.updateHealth.installer.periodDownloads)}</strong>
+              </div>
+              <div>
+                <span>updater 期間合計</span>
+                <strong>{formatNumber(data.updateHealth.updater.periodDownloads)}</strong>
+              </div>
+            </div>
+            <UpdateHealthChart
+              health={data.updateHealth}
+              days={data.meta.days}
+              formatter={formatter}
+            />
+            <p class="panel-description">
+              updater
+              は自動更新クライアントの取得数で、稼働中インストール数の近似になります。このパネルは集計対象（scope）設定の影響を受けません。
+            </p>
+          </section>
 
           <section class="detail-grid">
             <article class="panel platform-panel">

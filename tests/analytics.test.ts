@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildArchitectureBreakdown,
+  buildDailySeries,
+  buildLatestVersionMetrics,
   buildPeriodAnalytics,
   buildPlatformSeries,
   selectReleaseEvents,
@@ -144,5 +146,52 @@ describe('selectReleaseEvents', () => {
     expect(selectReleaseEvents(rows, '2026-08-20', '2026-08-22', 'Asia/Tokyo', 'stable')).toEqual([
       expect.objectContaining({ tag: 'v2.0.0' }),
     ])
+  })
+})
+
+describe('buildDailySeries', () => {
+  it('returns null after a missing observation instead of combining multiple days', () => {
+    const series = buildDailySeries(
+      [
+        { date: '2026-08-19', total: 20 },
+        { date: '2026-08-20', total: 25 },
+        { date: '2026-08-22', total: 40 },
+      ],
+      '2026-08-20',
+      '2026-08-22',
+    )
+
+    expect(series).toEqual([
+      { date: '2026-08-20', totalDownloads: 25, dailyDownloads: 5, observed: true },
+      { date: '2026-08-21', totalDownloads: 25, dailyDownloads: null, observed: false },
+      { date: '2026-08-22', totalDownloads: 40, dailyDownloads: null, observed: true },
+    ])
+  })
+})
+
+describe('buildLatestVersionMetrics', () => {
+  it('selects the newest published tag and calculates its period share', () => {
+    expect(
+      buildLatestVersionMetrics(
+        [
+          { tag: 'v1.2.0', publishedAt: '2026-08-10T00:00:00Z', downloads: 40 },
+          { tag: 'v1.1.0', publishedAt: '2026-07-10T00:00:00Z', downloads: 60 },
+        ],
+        100,
+      ),
+    ).toEqual({
+      latestVersionShare: 0.4,
+      latestVersionTag: 'v1.2.0',
+      latestVersionPublishedAt: '2026-08-10T00:00:00Z',
+    })
+  })
+
+  it('returns a null share when the period total is zero', () => {
+    expect(
+      buildLatestVersionMetrics(
+        [{ tag: 'v1.2.0', publishedAt: '2026-08-10T00:00:00Z', downloads: 0 }],
+        0,
+      ).latestVersionShare,
+    ).toBeNull()
   })
 })

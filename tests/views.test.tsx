@@ -64,6 +64,9 @@ describe('DashboardPage', () => {
     expect(html).not.toContain('<script')
     expect(html).toContain('アーキテクチャ別')
     expect(html).toContain('aria-label="アーキテクチャ別ダウンロード構成"')
+    expect(html).toContain('新規 vs 更新')
+    expect(html).toContain('最新バージョン比率')
+    expect(html).toContain('scope）設定の影響を受けません')
   })
 
   it('escapes hostile asset names and drops non-https asset links', async () => {
