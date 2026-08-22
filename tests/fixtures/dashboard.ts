@@ -8,6 +8,7 @@ import type {
   BreakdownItem,
   DashboardResponse,
   Platform,
+  PlatformSeriesItem,
   ReleaseBreakdownItem,
   SeriesPoint,
 } from '../../src/types'
@@ -232,6 +233,15 @@ export function previewDashboard(url: URL): DashboardResponse {
   }
 
   const platforms = platformBreakdown(periodDownloads)
+  const platformSeries: PlatformSeriesItem[] = platforms.map((platform) => ({
+    key: platform.key as Platform,
+    label: platform.label,
+    points: series.map((point) => ({
+      date: point.date,
+      dailyDownloads:
+        point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * platform.share),
+    })),
+  }))
   const releases = releaseBreakdown(periodDownloads)
   const leadPlatform = platforms[0]
   const leadRelease = releases[0]
@@ -275,6 +285,17 @@ export function previewDashboard(url: URL): DashboardResponse {
       latestDayDate: END_DATE,
     },
     series,
+    releaseEvents: RELEASES.filter((release) => {
+      const date = release.publishedAt.slice(0, 10)
+      return date >= first.date && date <= latest.date
+    }).map((release) => ({
+      tag: release.tag,
+      label: `HardwareVisualizer ${release.tag}`,
+      prerelease: false,
+      url: `https://github.com/shm11C3/HardwareVisualizer/releases/tag/${release.tag}`,
+      date: release.publishedAt.slice(0, 10),
+    })),
+    platformSeries,
     platformBreakdown: platforms,
     architectureBreakdown: architectureBreakdown(periodDownloads),
     releaseBreakdown: releases,

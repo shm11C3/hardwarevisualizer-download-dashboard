@@ -57,6 +57,8 @@ describe('DashboardPage', () => {
     const html = await render(data, query)
 
     expect(html.match(/class="chart-bar"/g)).toHaveLength(90)
+    expect(html).toContain('OS別推移')
+    expect(html).toContain('class="release-marker"')
     expect(html).toContain('<a href="/?days=90&amp;channel=all&amp;scope=all" class="active"')
     expect(html).not.toContain('skeleton-text')
     expect(html).not.toContain('<script')
