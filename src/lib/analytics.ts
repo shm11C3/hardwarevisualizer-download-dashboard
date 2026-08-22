@@ -1,4 +1,5 @@
 import type {
+  Architecture,
   AssetBreakdownItem,
   BreakdownItem,
   CollectionRunSummary,
@@ -10,7 +11,7 @@ import type {
   ReleaseBreakdownItem,
   SeriesPoint,
 } from '../types'
-import { platformLabel } from './assets'
+import { architectureLabel, platformLabel } from './assets'
 import { addDays, daysBetween, enumerateDates, laterDate } from './date'
 
 export interface DailyTotalRow {
@@ -46,6 +47,12 @@ interface RunRow {
 }
 
 interface PlatformRow {
+  key: string
+  downloads: number
+  total_downloads: number
+}
+
+export interface ArchitectureBreakdownRow {
   key: string
   downloads: number
   total_downloads: number
@@ -324,6 +331,69 @@ async function platformBreakdown(
   })
 }
 
+export function buildArchitectureBreakdown(
+  rows: ArchitectureBreakdownRow[],
+  periodDownloads: number,
+  totalDownloads: number,
+): BreakdownItem[] {
+  return rows.map((row) => {
+    const downloads = numberValue(row.downloads)
+    const currentTotal = numberValue(row.total_downloads)
+    return {
+      key: row.key,
+      label: architectureLabel(row.key as Architecture),
+      downloads,
+      totalDownloads: currentTotal,
+      share: share(downloads, periodDownloads, currentTotal, totalDownloads),
+    }
+  })
+}
+
+async function architectureBreakdown(
+  database: D1Database,
+  query: DashboardQuery,
+  currentDate: string,
+  baselineDate: string,
+  periodDownloads: number,
+  totalDownloads: number,
+): Promise<BreakdownItem[]> {
+  const result = await database
+    .prepare(
+      `
+        WITH current_snapshot AS (
+          SELECT asset_id, download_count
+          FROM snapshots
+          WHERE snapshot_date = ?
+        ), baseline_snapshot AS (
+          SELECT asset_id, download_count
+          FROM snapshots
+          WHERE snapshot_date = ?
+        )
+        SELECT
+          a.architecture AS key,
+          SUM(current_snapshot.download_count) AS total_downloads,
+          SUM(
+            CASE
+              WHEN current_snapshot.download_count > COALESCE(baseline_snapshot.download_count, 0)
+              THEN current_snapshot.download_count - COALESCE(baseline_snapshot.download_count, 0)
+              ELSE 0
+            END
+          ) AS downloads
+        FROM current_snapshot
+        INNER JOIN assets a ON a.id = current_snapshot.asset_id
+        INNER JOIN releases r ON r.id = a.release_id
+        LEFT JOIN baseline_snapshot ON baseline_snapshot.asset_id = current_snapshot.asset_id
+        WHERE ${filterClause(query)}
+        GROUP BY a.architecture
+        ORDER BY downloads DESC, total_downloads DESC
+      `,
+    )
+    .bind(currentDate, baselineDate)
+    .all<ArchitectureBreakdownRow>()
+
+  return buildArchitectureBreakdown(result.results ?? [], periodDownloads, totalDownloads)
+}
+
 async function releaseBreakdown(
   database: D1Database,
   query: DashboardQuery,
@@ -548,8 +618,16 @@ export async function getDashboard(
     }
   }
 
-  const [platforms, releases, assets] = await Promise.all([
+  const [platforms, architectures, releases, assets] = await Promise.all([
     platformBreakdown(
+      env.DB,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+      analytics.periodDownloads,
+      analytics.totalDownloads,
+    ),
+    architectureBreakdown(
       env.DB,
       query,
       analytics.latestSnapshotDate,
@@ -605,6 +683,7 @@ export async function getDashboard(
     },
     series: analytics.series,
     platformBreakdown: platforms,
+    architectureBreakdown: architectures,
     releaseBreakdown: releases,
     topAssets: assets,
     insights: buildInsights(analytics, platforms, releases),

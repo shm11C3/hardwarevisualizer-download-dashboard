@@ -127,6 +127,7 @@ export interface DashboardResponse {
   }
   series: SeriesPoint[]
   platformBreakdown: BreakdownItem[]
+  architectureBreakdown: BreakdownItem[]
   releaseBreakdown: ReleaseBreakdownItem[]
   topAssets: AssetBreakdownItem[]
   insights: DashboardInsight[]

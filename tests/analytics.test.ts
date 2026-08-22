@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPeriodAnalytics } from '../src/lib/analytics'
+import { buildArchitectureBreakdown, buildPeriodAnalytics } from '../src/lib/analytics'
 
 describe('buildPeriodAnalytics', () => {
   it('uses the first snapshot as a baseline instead of counting historical totals', () => {
@@ -44,5 +44,37 @@ describe('buildPeriodAnalytics', () => {
     expect(result?.periodDownloads).toBe(140)
     expect(result?.previousPeriodDownloads).toBe(70)
     expect(result?.growthPercent).toBe(100)
+  })
+})
+
+describe('buildArchitectureBreakdown', () => {
+  it('labels architectures and calculates period shares', () => {
+    expect(
+      buildArchitectureBreakdown(
+        [
+          { key: 'x64', downloads: 60, total_downloads: 600 },
+          { key: 'arm64', downloads: 40, total_downloads: 400 },
+        ],
+        100,
+        1_000,
+      ),
+    ).toEqual([
+      { key: 'x64', label: 'x64', downloads: 60, totalDownloads: 600, share: 0.6 },
+      { key: 'arm64', label: 'ARM64', downloads: 40, totalDownloads: 400, share: 0.4 },
+    ])
+  })
+
+  it('falls back to cumulative shares when the period has no downloads', () => {
+    expect(
+      buildArchitectureBreakdown([{ key: 'universal', downloads: 0, total_downloads: 25 }], 0, 100),
+    ).toEqual([
+      {
+        key: 'universal',
+        label: 'Universal',
+        downloads: 0,
+        totalDownloads: 25,
+        share: 0.25,
+      },
+    ])
   })
 })

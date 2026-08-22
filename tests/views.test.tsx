@@ -60,6 +60,8 @@ describe('DashboardPage', () => {
     expect(html).toContain('<a href="/?days=90&amp;channel=all&amp;scope=all" class="active"')
     expect(html).not.toContain('skeleton-text')
     expect(html).not.toContain('<script')
+    expect(html).toContain('アーキテクチャ別')
+    expect(html).toContain('aria-label="アーキテクチャ別ダウンロード構成"')
   })
 
   it('escapes hostile asset names and drops non-https asset links', async () => {
