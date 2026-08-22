@@ -7,6 +7,7 @@ import type {
   EmptyDashboardResponse,
 } from '../types'
 import {
+  AdoptionCurveChart,
   CumulativeChart,
   DailyChart,
   PLATFORM_COLORS,
@@ -378,6 +379,17 @@ export function DashboardPage({
               updater
               は自動更新クライアントの取得数で、稼働中インストール数の近似になります。このパネルは集計対象（scope）設定の影響を受けません。
             </p>
+          </section>
+
+          <section class="panel adoption-panel">
+            <div class="panel-header">
+              <div>
+                <p class="panel-kicker">Release adoption</p>
+                <h2>リリース採用曲線</h2>
+              </div>
+              <span class="panel-meta">公開後 0〜30 日</span>
+            </div>
+            <AdoptionCurveChart curves={data.adoptionCurves} />
           </section>
 
           <section class="detail-grid">

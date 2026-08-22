@@ -67,6 +67,15 @@ describe('DashboardPage', () => {
     expect(html).toContain('新規 vs 更新')
     expect(html).toContain('最新バージョン比率')
     expect(html).toContain('scope）設定の影響を受けません')
+    expect(html).toContain('リリース採用曲線')
+    expect(html).toContain('v1.9.2 · Day 30')
+  })
+
+  it('renders the adoption-curve empty state when no releases are comparable', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({ ...data, adoptionCurves: [] })
+
+    expect(html).toContain('比較できるリリースがまだありません')
   })
 
   it('escapes hostile asset names and drops non-https asset links', async () => {
