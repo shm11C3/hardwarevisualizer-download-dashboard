@@ -6,7 +6,7 @@
   "description": "Daily GitHub Release download analytics for HardwareVisualizer, built with Hono, Cloudflare Workers, D1, and Cron Triggers.",
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
-    "preview:demo": "node scripts/preview-server.mjs",
+    "preview:demo": "npm run db:migrate:local && npm run db:seed:local && npm run dev",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:create": "wrangler d1 create hardwarevisualizer-downloads",

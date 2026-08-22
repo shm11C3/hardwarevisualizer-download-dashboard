@@ -1,28 +1,11 @@
 import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
 import { collectDownloads } from '../lib/collector'
-import type { AppEnv, ChannelFilter, DashboardQuery, ScopeFilter } from '../types'
+import { parseDashboardQuery } from '../lib/query'
+import { BASELINE_SECURITY_HEADERS } from '../lib/security'
+import type { AppEnv } from '../types'
 
 const api = new Hono<AppEnv>()
-const allowedDays = new Set([7, 30, 90, 365])
-const allowedChannels = new Set<ChannelFilter>(['stable', 'all'])
-const allowedScopes = new Set<ScopeFilter>(['installers', 'distribution', 'all'])
-
-function parseDashboardQuery(url: URL): DashboardQuery | null {
-  const days = Number(url.searchParams.get('days') ?? '30')
-  const channel = (url.searchParams.get('channel') ?? 'stable') as ChannelFilter
-  const scope = (url.searchParams.get('scope') ?? 'installers') as ScopeFilter
-
-  if (!allowedDays.has(days) || !allowedChannels.has(channel) || !allowedScopes.has(scope)) {
-    return null
-  }
-
-  return {
-    days: days as DashboardQuery['days'],
-    channel,
-    scope,
-  }
-}
 
 async function secureEquals(left: string, right: string): Promise<boolean> {
   const encoder = new TextEncoder()
@@ -43,9 +26,9 @@ async function secureEquals(left: string, right: string): Promise<boolean> {
 
 // Prepared before next() so that error and not-found responses carry them too.
 api.use('*', async (context, next) => {
-  context.header('X-Content-Type-Options', 'nosniff')
-  context.header('Referrer-Policy', 'strict-origin-when-cross-origin')
-  context.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  for (const [name, value] of Object.entries(BASELINE_SECURITY_HEADERS)) {
+    context.header(name, value)
+  }
   await next()
 })
 

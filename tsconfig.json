@@ -10,8 +10,17 @@
     "skipLibCheck": true,
     "allowJs": false,
     "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
     "types": ["@cloudflare/workers-types", "vitest/globals"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "worker-configuration.d.ts", "vitest.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "worker-configuration.d.ts",
+    "vitest.config.ts"
+  ]
 }

@@ -31,18 +31,19 @@ Cloudflare Worker + Hono
         │
         ├── Cron: 10 15 * * *  (00:10 JST)
         ├── POST /api/admin/collect
-        └── GET  /api/dashboard
+        ├── GET  /api/dashboard
+        └── GET  /            (hono/jsx SSR)
         │
         ▼
 Cloudflare D1
   releases / assets / snapshots / collection_runs
         │
         ▼
-Static dashboard
-  HTML + CSS + vanilla JavaScript + SVG charts
+Server-rendered dashboard
+  hono/jsx + CSS + inline SVG charts
 ```
 
-フロントエンドを外部チャートライブラリに依存させていないため、Worker と静的アセットだけで配信できます。
+ダッシュボードは Worker が `hono/jsx` でサーバーサイドレンダリングします。ブラウザに配信する JavaScript はゼロで、バンドラーも使いません。期間・チャンネル・集計対象の絞り込みはすべてクエリ文字列付きのリンクなので、状態は URL だけが持ちます。チャートは外部ライブラリなしの手書き SVG です。
 
 ## 重要な集計仕様
 
@@ -64,13 +65,13 @@ GitHub API が返すのは、各 Release Asset の現在時点の累積ダウン
 
 ## ローカルでデモ画面を確認
 
-実データや Cloudflare アカウントなしで、合成データを使った画面を確認できます。
+Cloudflare アカウントもネットワークも不要で、合成データを入れたローカル D1 に対して本番と同じ Worker を動かせます。
 
 ```bash
 npm run preview:demo
 ```
 
-ブラウザで `http://127.0.0.1:4173` を開きます。
+マイグレーションと `seed/demo.sql` の投入を済ませてから `wrangler dev` を起動します。ブラウザで `http://localhost:8787` を開いてください。シードは約90日分なので、`1年` 表示は観測できた範囲だけを描画します。
 
 ## ローカル開発
 
@@ -270,11 +271,8 @@ npm test
 .
 ├── .github/workflows/deploy.yml
 ├── migrations/0001_initial.sql
-├── public/
-│   ├── app.js
-│   ├── index.html
+├── public/            静的アセットのみ (CSS, アイコン, _headers)
 │   └── styles.css
-├── scripts/preview-server.mjs
 ├── seed/demo.sql
 ├── src/
 │   ├── index.ts
@@ -283,9 +281,20 @@ npm test
 │   │   ├── assets.ts
 │   │   ├── collector.ts
 │   │   ├── date.ts
-│   │   └── github.ts
-│   └── routes/api.ts
+│   │   ├── github.ts
+│   │   ├── query.ts     クエリの解析とリンク生成
+│   │   └── security.ts  Worker 応答のセキュリティヘッダ
+│   ├── routes/
+│   │   ├── api.ts
+│   │   └── page.tsx     GET / の SSR
+│   └── views/           hono/jsx コンポーネント
+│       ├── Charts.tsx
+│       ├── Controls.tsx
+│       ├── DashboardPage.tsx
+│       ├── Layout.tsx
+│       └── format.ts
 ├── tests/
+│   └── fixtures/dashboard.ts   合成データ
 └── wrangler.jsonc
 ```
 
@@ -298,4 +307,5 @@ npm test
 - 収集が1日以上欠けた場合、期間合計には差分を含めますが、日次グラフでは欠損をまたぐ値を表示しません。
 - GitHub 上でリリースを削除して同じタグで作り直すと、新しい Release ID の行が追加されます。旧行と旧アセットは履歴保持のために残し、リリース別の表示ではタグ単位で合算します。
 - アセットのファイル名規則が変わった場合は `src/lib/assets.ts` の分類ルールを更新してください。
+- `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
 - `scope=all` は署名や更新メタデータも含むため、利用者数の近似には向きません。

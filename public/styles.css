@@ -304,67 +304,50 @@ a:focus-visible {
 
 .segmented {
   display: inline-grid;
-  grid-template-columns: repeat(4, minmax(62px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(62px, 1fr);
   gap: 4px;
-  width: min(420px, 100%);
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 11px;
   background: rgba(6, 9, 15, 0.65);
 }
 
-.segmented button {
+.range-control .segmented {
+  width: min(420px, 100%);
+}
+
+.segmented a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 38px;
   padding: 0 14px;
-  border: 0;
   border-radius: 8px;
   color: var(--text-muted);
   background: transparent;
   font-size: 12px;
   font-weight: 750;
-  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
   transition:
     color 150ms ease,
     background 150ms ease,
     box-shadow 150ms ease;
 }
 
-.segmented button:hover {
+.segmented a:hover {
   color: var(--text-secondary);
 }
 
-.segmented button.active {
+.segmented a.active {
   color: var(--text);
   background: var(--surface-raised);
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.25);
 }
 
-.select-control {
-  flex: 0 0 190px;
-}
-
-.select-control select {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 38px 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  color: var(--text-secondary);
-  background-color: rgba(6, 9, 15, 0.65);
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 17px) 20px,
-    calc(100% - 12px) 20px;
-  background-repeat: no-repeat;
-  background-size:
-    5px 5px,
-    5px 5px;
-  font-size: 12px;
-  font-weight: 650;
-  appearance: none;
-  cursor: pointer;
+.filter-control {
+  flex: 0 0 auto;
 }
 
 .refresh-button {
@@ -381,7 +364,7 @@ a:focus-visible {
   background: var(--surface-raised);
   font-size: 12px;
   font-weight: 750;
-  cursor: pointer;
+  text-decoration: none;
   transition:
     color 150ms ease,
     border-color 150ms ease,
@@ -402,16 +385,6 @@ a:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
-}
-
-.refresh-button.loading svg {
-  animation: spin 900ms linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .error-banner {
@@ -510,16 +483,6 @@ a:focus-visible {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.5;
-}
-
-.skeleton-text {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.45;
-  }
 }
 
 .chart-grid,
@@ -1128,7 +1091,7 @@ tbody tr:hover td {
     grid-column: 1 / -1;
   }
 
-  .select-control {
+  .filter-control {
     flex-basis: auto;
   }
 
@@ -1198,7 +1161,7 @@ tbody tr:hover td {
     width: 100%;
   }
 
-  .segmented button {
+  .segmented a {
     padding: 0 7px;
   }
 

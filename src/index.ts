@@ -1,21 +1,28 @@
 import { Hono } from 'hono'
 import { collectDownloads } from './lib/collector'
 import api from './routes/api'
+import page, { notFoundPage } from './routes/page'
 import type { AppEnv } from './types'
 
 const app = new Hono<AppEnv>()
 
+app.route('/', page)
 app.route('/api', api)
 
-app.notFound((context) =>
-  context.json(
-    {
-      error: 'not_found',
-      message: '指定された API エンドポイントは存在しません。',
-    },
-    404,
-  ),
-)
+app.notFound((context) => {
+  const { pathname } = new URL(context.req.url)
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    return context.json(
+      {
+        error: 'not_found',
+        message: '指定された API エンドポイントは存在しません。',
+      },
+      404,
+    )
+  }
+
+  return notFoundPage(context)
+})
 
 app.onError((error, context) => {
   const requestId = crypto.randomUUID()

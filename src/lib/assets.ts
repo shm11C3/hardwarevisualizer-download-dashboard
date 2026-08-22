@@ -100,3 +100,18 @@ export function platformLabel(platform: Platform): string {
       return 'その他'
   }
 }
+
+export function architectureLabel(architecture: Architecture): string {
+  switch (architecture) {
+    case 'x64':
+      return 'x64'
+    case 'arm64':
+      return 'ARM64'
+    case 'x86':
+      return 'x86'
+    case 'universal':
+      return 'Universal'
+    default:
+      return '—'
+  }
+}
