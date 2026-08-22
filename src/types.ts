@@ -101,10 +101,20 @@ export interface AssetBreakdownItem {
 }
 
 export interface DashboardInsight {
-  kind: 'growth' | 'platform' | 'release' | 'peak' | 'data'
+  kind: 'growth' | 'platform' | 'release' | 'peak' | 'data' | 'latest'
   title: string
   value: string
   body: string
+}
+
+export interface UpdateHealthSeries {
+  periodDownloads: number
+  series: SeriesPoint[]
+}
+
+export interface UpdateHealth {
+  installer: UpdateHealthSeries
+  updater: UpdateHealthSeries
 }
 
 export interface CollectionRunSummary {
@@ -151,6 +161,10 @@ export interface DashboardResponse {
   architectureBreakdown: BreakdownItem[]
   releaseBreakdown: ReleaseBreakdownItem[]
   topAssets: AssetBreakdownItem[]
+  updateHealth: UpdateHealth
+  latestVersionShare: number | null
+  latestVersionTag: string | null
+  latestVersionPublishedAt: string | null
   insights: DashboardInsight[]
 }
 

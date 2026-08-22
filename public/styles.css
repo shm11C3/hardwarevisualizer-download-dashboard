@@ -1325,5 +1325,106 @@ tbody tr:hover td {
 
   .platform-trend-legend {
     display: none;
+/* Installer vs updater comparison panel. */
+.insight-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.update-health-panel {
+  margin-bottom: 18px;
+}
+
+.update-health-legend,
+.update-health-legend span {
+  display: flex;
+  align-items: center;
+}
+
+.update-health-legend {
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.update-health-legend span {
+  gap: 6px;
+}
+
+.update-health-legend i {
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: #7c9cff;
+}
+
+.update-health-legend i.updater {
+  background: #53e6c4;
+}
+
+.update-health-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0 8px;
+}
+
+.update-health-totals div {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.update-health-totals span,
+.update-health-totals strong {
+  display: block;
+}
+
+.update-health-totals span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.update-health-totals strong {
+  margin-top: 4px;
+  font-size: 22px;
+}
+
+.update-health-line {
+  fill: none;
+  stroke: #7c9cff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.update-health-line.updater {
+  stroke: #53e6c4;
+}
+
+.panel-description {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@media (max-width: 620px) {
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .update-health-panel {
+    padding: 20px 17px;
+  }
+
+  .update-health-totals {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 621px) and (max-width: 860px) {
+  .insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

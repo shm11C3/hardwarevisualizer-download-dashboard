@@ -248,6 +248,16 @@ export function previewDashboard(url: URL): DashboardResponse {
   const peak = [...series].sort(
     (left, right) => (right.dailyDownloads ?? 0) - (left.dailyDownloads ?? 0),
   )[0]
+  const installerSeries = series.map((point) => ({
+    ...point,
+    totalDownloads: Math.round(point.totalDownloads * 0.62),
+    dailyDownloads: point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * 0.62),
+  }))
+  const updaterSeries = series.map((point) => ({
+    ...point,
+    totalDownloads: Math.round(point.totalDownloads * 0.28),
+    dailyDownloads: point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * 0.28),
+  }))
 
   return {
     status: 'ok',
@@ -300,6 +310,13 @@ export function previewDashboard(url: URL): DashboardResponse {
     architectureBreakdown: architectureBreakdown(periodDownloads),
     releaseBreakdown: releases,
     topAssets: topAssets(periodDownloads),
+    updateHealth: {
+      installer: { periodDownloads: Math.round(periodDownloads * 0.62), series: installerSeries },
+      updater: { periodDownloads: Math.round(periodDownloads * 0.28), series: updaterSeries },
+    },
+    latestVersionShare: 0.57,
+    latestVersionTag: 'v1.9.2',
+    latestVersionPublishedAt: '2026-07-21T17:43:53Z',
     insights: [
       {
         kind: 'growth',
@@ -318,6 +335,12 @@ export function previewDashboard(url: URL): DashboardResponse {
         title: '牽引リリース',
         value: leadRelease?.key ?? '—',
         body: `期間内 ${(leadRelease?.downloads ?? 0).toLocaleString('ja-JP')} 件で、対象ダウンロードを最も牽引しています。`,
+      },
+      {
+        kind: 'latest',
+        title: '最新バージョン比率',
+        value: '57%',
+        body: 'v1.9.2 が期間内ダウンロードの中心です。',
       },
       {
         kind: 'peak',

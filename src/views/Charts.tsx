@@ -6,6 +6,7 @@ import type {
   ReleaseBreakdownItem,
   ReleaseEvent,
   SeriesPoint,
+  UpdateHealth,
 } from '../types'
 import { type Formatter, formatDecimal, formatNumber, safeUrl } from './format'
 
@@ -26,6 +27,94 @@ function linePath(points: Point[]): string {
   return points
     .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
     .join(' ')
+}
+
+function segmentedLinePaths(
+  series: SeriesPoint[],
+  x: (index: number) => number,
+  y: (value: number) => number,
+) {
+  const segments: Point[][] = []
+  let segment: Point[] = []
+  series.forEach((point, index) => {
+    if (point.dailyDownloads === null) {
+      if (segment.length) segments.push(segment)
+      segment = []
+      return
+    }
+    segment.push({ x: x(index), y: y(point.dailyDownloads) })
+  })
+  if (segment.length) segments.push(segment)
+  return segments.filter((points) => points.length > 1).map(linePath)
+}
+
+export function UpdateHealthChart({
+  health,
+  days,
+  formatter,
+}: {
+  health: UpdateHealth
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const series = health.installer.series
+  if (!series.length) return <ChartEmpty message="表示できる日次データがありません" />
+
+  const width = 900
+  const height = 280
+  const margin = { top: 16, right: 14, bottom: 36, left: 52 }
+  const innerWidth = width - margin.left - margin.right
+  const innerHeight = height - margin.top - margin.bottom
+  const values = [...health.installer.series, ...health.updater.series].map(
+    (point) => point.dailyDownloads ?? 0,
+  )
+  const maximum = niceMaximum(Math.max(...values, 1))
+  const x = (index: number) => margin.left + (index / Math.max(series.length - 1, 1)) * innerWidth
+  const y = (value: number) => margin.top + innerHeight - (value / maximum) * innerHeight
+  const labelCount = Math.min(6, series.length)
+  const labels = Array.from({ length: labelCount }, (_, index) => {
+    const dataIndex = Math.round((index * (series.length - 1)) / Math.max(labelCount - 1, 1))
+    return { point: series[dataIndex], x: x(dataIndex) }
+  })
+
+  return (
+    <div class="chart-frame update-health-chart">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="installer と updater の日次比較"
+      >
+        {Array.from({ length: 5 }, (_, index) => {
+          const value = (maximum / 4) * index
+          return (
+            <>
+              <line
+                class="chart-grid-line"
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text class="chart-axis-text" x={margin.left - 10} y={y(value) + 3} text-anchor="end">
+                {formatNumber(value)}
+              </text>
+            </>
+          )
+        })}
+        {segmentedLinePaths(health.installer.series, x, y).map((path) => (
+          <path class="update-health-line installer" d={path} />
+        ))}
+        {segmentedLinePaths(health.updater.series, x, y).map((path) => (
+          <path class="update-health-line updater" d={path} />
+        ))}
+        {labels.map((label) => (
+          <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
+            {formatter.chartLabel(label.point?.date, days === 365)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  )
 }
 
 function ChartEmpty({ message }: { message: string }) {
