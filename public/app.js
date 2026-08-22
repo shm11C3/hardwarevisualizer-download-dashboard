@@ -76,14 +76,25 @@ function formatNumber(value, maximumFractionDigits = 0) {
   return new Intl.NumberFormat('ja-JP', { maximumFractionDigits }).format(number)
 }
 
+// Date fields arrive in two shapes: snapshot keys are plain dates (2026-08-22),
+// while GitHub publish times are full ISO timestamps. Plain keys are pinned to
+// JST so they do not drift a day for viewers in other zones.
+function toDate(value) {
+  if (!value) return null
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00+09:00`)
+    : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 function formatDate(value) {
-  if (!value) return '—'
-  return dateFormatter.format(new Date(`${value}T00:00:00+09:00`))
+  const date = toDate(value)
+  return date ? dateFormatter.format(date) : '—'
 }
 
 function formatDateTime(value) {
-  if (!value) return '—'
-  return dateTimeFormatter.format(new Date(value))
+  const date = toDate(value)
+  return date ? dateTimeFormatter.format(date) : '—'
 }
 
 function parseStateFromUrl() {
@@ -152,7 +163,8 @@ function niceMaximum(value) {
 }
 
 function chartLabelDate(value, includeYear = false) {
-  const date = new Date(`${value}T00:00:00+09:00`)
+  const date = toDate(value)
+  if (!date) return '—'
   return new Intl.DateTimeFormat('ja-JP', {
     ...(includeYear ? { year: '2-digit' } : {}),
     month: 'numeric',

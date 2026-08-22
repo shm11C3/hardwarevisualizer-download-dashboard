@@ -77,7 +77,15 @@ function platformBreakdown(period) {
 function releaseBreakdown(period) {
   const weights = [0.57, 0.22, 0.11, 0.065, 0.035]
   const tags = ['v1.9.2', 'v1.9.1', 'v1.9.0', 'v1.8.1', 'v1.8.0']
-  const published = ['2026-07-21', '2026-06-27', '2026-06-02', '2026-04-18', '2026-03-11']
+  // Full ISO timestamps, matching what the API returns for GitHub publish times.
+  // Date-only values here would hide formatting bugs that only appear in production.
+  const published = [
+    '2026-07-21T17:43:53Z',
+    '2026-06-25T22:44:07Z',
+    '2026-06-02T08:12:40Z',
+    '2026-04-18T11:05:19Z',
+    '2026-03-11T14:38:02Z',
+  ]
   let used = 0
   return tags.map((tag, index) => {
     const downloads =
