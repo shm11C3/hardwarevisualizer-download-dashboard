@@ -5,6 +5,7 @@ import type {
   DashboardQuery,
   DashboardResponse,
   EmptyDashboardResponse,
+  RepoStats,
 } from '../types'
 import {
   AdoptionCurveChart,
@@ -14,6 +15,7 @@ import {
   PlatformBreakdown,
   PlatformTrendChart,
   ReleaseBreakdown,
+  RepoStatsCharts,
   UpdateHealthChart,
   WeekdayPattern,
 } from './Charts'
@@ -128,6 +130,46 @@ function KpiGrid({ data, formatter }: { data: DashboardResponse; formatter: Form
         note={growthNote}
       />
     </section>
+  )
+}
+
+function RepoStatsPanel({
+  stats,
+  days,
+  formatter,
+}: {
+  stats: RepoStats
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const hasData =
+    stats.stars.latest !== null || stats.stars.series.length > 0 || stats.traffic.length > 0
+
+  return (
+    <article class="panel repo-stats-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Repository attention</p>
+          <h2>リポジトリの注目度</h2>
+        </div>
+        <div class="repo-latest-stars">
+          <span>最新スター</span>
+          <strong>
+            {stats.stars.latest === null ? '—' : `★ ${formatNumber(stats.stars.latest)}`}
+          </strong>
+        </div>
+      </div>
+      {hasData ? (
+        <>
+          <RepoStatsCharts stats={stats} days={days} formatter={formatter} />
+          {stats.traffic.length === 0 ? (
+            <p class="repo-traffic-note">トラフィックは GITHUB_TOKEN に push 権限が必要です</p>
+          ) : null}
+        </>
+      ) : (
+        <div class="repo-stats-empty">スター・トラフィックの収集を開始すると表示されます</div>
+      )}
+    </article>
   )
 }
 
@@ -342,6 +384,8 @@ export function DashboardPage({
               </div>
             </article>
           </section>
+
+          <RepoStatsPanel stats={data.repoStats} days={data.meta.days} formatter={formatter} />
 
           <article class="panel platform-trend-panel">
             <div class="panel-header">

@@ -11,6 +11,7 @@ import type {
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
+  RepoStats,
   SeriesPoint,
 } from '../../src/types'
 
@@ -217,6 +218,26 @@ function topAssets(period: number): AssetBreakdownItem[] {
   })
 }
 
+function repositoryStats(series: SeriesPoint[]): RepoStats {
+  let stargazers = 1_840
+  const starSeries = series.map((point, index) => {
+    const dailyDelta = index === 0 ? null : index % 19 === 0 ? -1 : index % 4 === 0 ? 2 : 0
+    stargazers += dailyDelta ?? 0
+    return { date: point.date, stargazers, dailyDelta }
+  })
+
+  return {
+    stars: { latest: starSeries.at(-1)?.stargazers ?? null, series: starSeries },
+    traffic: series.slice(-14).map((point, index) => ({
+      date: point.date,
+      viewsCount: 120 + index * 9 + (index % 3) * 18,
+      viewsUniques: 72 + index * 5,
+      clonesCount: 18 + index * 2 + (index % 4) * 3,
+      clonesUniques: 11 + index,
+    })),
+  }
+}
+
 export function previewDashboard(url: URL): DashboardResponse {
   const { days, channel, scope } = coerceDashboardQuery(url)
   const latestIndex = ALL_ROWS.length - 1
@@ -308,6 +329,7 @@ export function previewDashboard(url: URL): DashboardResponse {
       latestDayDownloads: latest.daily,
       latestDayDate: END_DATE,
     },
+    repoStats: repositoryStats(series),
     series,
     releaseEvents: RELEASES.filter((release) => {
       const date = release.publishedAt.slice(0, 10)

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { collectDownloads } from './lib/collector'
+import { collectAll } from './lib/collector'
 import api from './routes/api'
 import page, { notFoundPage } from './routes/page'
 import type { AppEnv } from './types'
@@ -45,6 +45,6 @@ export default {
     env: CloudflareBindings,
     _context: ExecutionContext,
   ): Promise<void> {
-    await collectDownloads(env, new Date(controller.scheduledTime))
+    await collectAll(env, new Date(controller.scheduledTime))
   },
 } satisfies ExportedHandler<CloudflareBindings>

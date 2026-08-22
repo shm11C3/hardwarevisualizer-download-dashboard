@@ -1583,3 +1583,216 @@ tbody tr:hover td {
     min-width: 560px;
   }
 }
+
+/* Repository stars and GitHub Traffic. */
+.repo-stats-panel {
+  margin-bottom: 18px;
+  padding: 25px;
+}
+
+.repo-latest-stars {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.repo-latest-stars span {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.repo-latest-stars strong {
+  color: var(--primary-bright);
+  font-size: 22px;
+}
+
+.repo-stats-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.repo-stats-charts.with-traffic {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.repo-stats-chart-section {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.repo-chart-heading,
+.repo-traffic-legend,
+.repo-traffic-legend span {
+  display: flex;
+  align-items: center;
+}
+
+.repo-chart-heading {
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 24px;
+  margin-bottom: 8px;
+}
+
+.repo-chart-heading h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.repo-chart-heading > span {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.repo-traffic-legend {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px 10px;
+}
+
+.repo-traffic-legend span {
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 8px;
+}
+
+.repo-traffic-legend i {
+  width: 12px;
+  height: 3px;
+  border-radius: 999px;
+  background: #7c9cff;
+}
+
+.repo-traffic-legend i.views-uniques {
+  background: #c39cff;
+}
+
+.repo-traffic-legend i.clones-count {
+  background: #53e6c4;
+}
+
+.repo-traffic-legend i.clones-uniques {
+  background: #f4c06a;
+}
+
+.repo-chart-frame {
+  min-height: 150px;
+}
+
+.repo-chart-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.repo-zero-line {
+  stroke: var(--border-strong);
+}
+
+.repo-star-bar {
+  fill: var(--primary-bright);
+}
+
+.repo-star-bar.negative {
+  fill: #ff8797;
+}
+
+.repo-traffic-line {
+  fill: none;
+  stroke: #7c9cff;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.repo-traffic-line.views-uniques {
+  stroke: #c39cff;
+  stroke-dasharray: 7 5;
+}
+
+.repo-traffic-line.clones-count {
+  stroke: #53e6c4;
+}
+
+.repo-traffic-line.clones-uniques {
+  stroke: #f4c06a;
+  stroke-dasharray: 7 5;
+}
+
+.repo-traffic-point {
+  fill: #7c9cff;
+}
+
+.repo-traffic-point.views-uniques {
+  fill: #c39cff;
+}
+
+.repo-traffic-point.clones-count {
+  fill: #53e6c4;
+}
+
+.repo-traffic-point.clones-uniques {
+  fill: #f4c06a;
+}
+
+.repo-traffic-note,
+.repo-stats-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.repo-traffic-note {
+  margin: 12px 0 0;
+}
+
+.repo-stats-empty {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  margin-top: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .repo-stats-charts.with-traffic {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .repo-stats-panel {
+    padding: 20px 17px;
+  }
+
+  .repo-latest-stars strong {
+    font-size: 18px;
+  }
+
+  .repo-chart-heading.traffic-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .repo-traffic-legend {
+    justify-content: flex-start;
+  }
+
+  .repo-chart-frame {
+    overflow-x: auto;
+  }
+
+  .repo-chart-frame svg {
+    min-width: 560px;
+  }
+}

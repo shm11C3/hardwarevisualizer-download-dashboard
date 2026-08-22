@@ -72,6 +72,33 @@ describe('DashboardPage', () => {
     expect(html).toContain('/api/export.csv?days=90&amp;channel=all&amp;scope=all')
     expect(html).toContain('/api/dashboard?days=90&amp;channel=all&amp;scope=all')
     expect(html).toContain('曜日パターン')
+    expect(html).toContain('リポジトリの注目度')
+    expect(html).toContain('最新スター')
+    expect(html).toContain('aria-label="スター増分の日次推移"')
+    expect(html).toContain('aria-label="views と clones の日次推移"')
+    expect(html).toContain('views uniques')
+    expect(html).toContain('clones uniques')
+  })
+
+  it('renders the repository-stats empty state', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({
+      ...data,
+      repoStats: { stars: { latest: null, series: [] }, traffic: [] },
+    })
+
+    expect(html).toContain('リポジトリの注目度')
+    expect(html).toContain('スター・トラフィックの収集を開始すると表示されます')
+    expect(html).not.toContain('aria-label="スター増分の日次推移"')
+  })
+
+  it('keeps star metrics visible and explains when traffic is unavailable', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({ ...data, repoStats: { ...data.repoStats, traffic: [] } })
+
+    expect(html).toContain('aria-label="スター増分の日次推移"')
+    expect(html).toContain('トラフィックは GITHUB_TOKEN に push 権限が必要です')
+    expect(html).not.toContain('aria-label="views と clones の日次推移"')
   })
 
   it('renders the adoption-curve empty state when no releases are comparable', async () => {
