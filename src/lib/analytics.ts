@@ -1278,11 +1278,9 @@ export async function getDashboard(
     ),
     latestVersionRows(env.DB, query, analytics.latestSnapshotDate, analytics.effectiveBaselineDate),
     adoptionCurveRows(env.DB, query),
-    repositoryStats(
-      env.DB,
-      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
-      analytics.latestSnapshotDate,
-    ),
+    // Stars and traffic can predate download tracking, so use the requested
+    // window start rather than the download series' clamped start.
+    repositoryStats(env.DB, analytics.requestedStartDate, analytics.latestSnapshotDate),
   ])
   const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
 
