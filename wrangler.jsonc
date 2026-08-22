@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hardwarevisualizer-download-dashboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "minify": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hardwarevisualizer-downloads",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "GITHUB_OWNER": "shm11C3",
+    "GITHUB_REPO": "HardwareVisualizer",
+    "TIME_ZONE": "Asia/Tokyo"
+  },
+  "triggers": {
+    "crons": ["10 15 * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

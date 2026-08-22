@@ -1,0 +1,16 @@
+{
+  "name": "HardwareVisualizer Download Analytics",
+  "short_name": "HardViz Stats",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080b12",
+  "theme_color": "#0d1220",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

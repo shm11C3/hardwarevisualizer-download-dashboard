@@ -1,0 +1,36 @@
+{
+  "name": "hardwarevisualizer-download-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Daily GitHub Release download analytics for HardwareVisualizer, built with Hono, Cloudflare Workers, D1, and Cron Triggers.",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "preview:demo": "node scripts/preview-server.mjs",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:create": "wrangler d1 create hardwarevisualizer-downloads",
+    "db:migrate:local": "wrangler d1 migrations apply hardwarevisualizer-downloads --local",
+    "db:migrate:remote": "wrangler d1 migrations apply hardwarevisualizer-downloads --remote",
+    "db:seed:local": "wrangler d1 execute hardwarevisualizer-downloads --local --file=./seed/demo.sql",
+    "collect:local": "curl -X POST http://localhost:8787/api/admin/collect -H 'Authorization: Bearer local-development-token'",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check .",
+    "check:write": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "hono": "4.13.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@cloudflare/workers-types": "5.20260821.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.124.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

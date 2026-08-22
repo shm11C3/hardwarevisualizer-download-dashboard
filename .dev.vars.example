@@ -1,0 +1,6 @@
+# Optional for a public repository, but recommended to avoid the unauthenticated rate limit.
+# Uncomment and set a real token; an invalid value makes GitHub reject every request with 401.
+# GITHUB_TOKEN=github_pat_replace_me
+
+# Protects POST /api/admin/collect. Use a long random value in production.
+COLLECT_TOKEN=local-development-token
