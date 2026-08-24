@@ -1,19 +1,20 @@
 import { Hono } from 'hono'
 import { collectAll } from './lib/collector'
-import { edgeCache } from './lib/edge-cache'
 import api from './routes/api'
 import page, { notFoundPage } from './routes/page'
 import type { AppEnv } from './types'
 
 const app = new Hono<AppEnv>()
 
-app.use('*', edgeCache())
 app.route('/', page)
 app.route('/api', api)
 
 app.notFound((context) => {
   const { pathname } = new URL(context.req.url)
   if (pathname === '/api' || pathname.startsWith('/api/')) {
+    // 404 is heuristically cacheable per RFC 9111, so opt out explicitly now
+    // that Workers Cache sits in front of every response.
+    context.header('Cache-Control', 'no-store')
     return context.json(
       {
         error: 'not_found',
