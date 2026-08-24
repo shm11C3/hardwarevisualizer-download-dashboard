@@ -216,6 +216,23 @@ API トークンは Cloudflare ダッシュボードの My Profile、API Tokens 
 
 `COLLECT_TOKEN` と `GITHUB_TOKEN` は Worker 側の Secret です。GitHub Secrets ではなく `npx wrangler secret put` で登録します。デプロイでは上書きされないため、登録は初回のみで済みます。
 
+## 依存関係の自動更新
+
+`.github/dependabot.yml` により、毎週月曜 09:00 JST に npm と GitHub Actions の更新 PR が作成されます。マイナーとパッチは本番用と開発用にまとめられ、メジャーは個別の PR になります。
+
+`.github/workflows/dependabot-auto-merge.yml` は、メジャー以外の Dependabot PR に auto-merge を予約します。auto-merge は即座にマージするのではなく、必須チェックが全て通った時点で GitHub がマージする仕組みです。つまり `deploy.yml` の verify ジョブ、型チェックと Biome とテストが成功しない限りマージされません。メジャー更新は変更履歴を読んでから手動でマージします。
+
+### 有効化に必要なリポジトリ設定
+
+auto-merge は次の2つが揃っていないと機能しません。どちらも欠けると、ワークフローは PR にマージ予約を入れられずに失敗します。
+
+| 場所 | 設定 |
+|---|---|
+| Settings、General、Pull Requests | Allow auto-merge を有効化 |
+| Settings、Rules または Branches | `main` に対して verify を必須チェックに指定 |
+
+必須チェックを指定していない状態では、auto-merge は待つ対象が無いため予約できません。テストを待たずにマージされる事故を防ぐ意味でも、ブランチ保護は必須です。
+
 ## API
 
 ### `GET /api/dashboard`
