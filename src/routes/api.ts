@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { getDashboard } from '../lib/analytics'
+import { getDashboard, getDashboardSeries } from '../lib/analytics'
 import { collectAll } from '../lib/collector'
 import { buildSeriesCsv } from '../lib/export'
 import { parseDashboardQuery } from '../lib/query'
@@ -64,8 +64,7 @@ api.get('/export.csv', async (context) => {
     )
   }
 
-  const response = await getDashboard(context.env, query)
-  const series = response.status === 'ok' ? response.series : []
+  const series = await getDashboardSeries(context.env, query)
   context.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   context.header('Content-Type', 'text/csv; charset=utf-8')
   context.header(

@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   "minify": true,
+  // D1 round trips dominate requests, so run near D1 rather than the visitor.
+  "placement": { "mode": "smart" },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
