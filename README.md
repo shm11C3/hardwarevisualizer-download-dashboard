@@ -204,13 +204,11 @@ curl -X POST https://YOUR_WORKER_DOMAIN/api/admin/collect \
 | ワークフロー | 起動条件 | 内容 |
 |---|---|---|
 | `.github/workflows/ci.yml` | Pull Request と `main` への push | 型チェック、Biome、テスト |
-| `.github/workflows/deploy.yml` | `main` の CI が成功したとき | D1 マイグレーション適用、Worker デプロイ |
+| `.github/workflows/deploy.yml` | `main` への push、`workflow_dispatch` | D1 マイグレーション適用、Worker デプロイ |
 
-デプロイは push ではなく CI の完了イベントを受けて起動し、CI が失敗した回は実行されません。分離しても未検証のコードが公開されないようにするためです。チェックアウトは CI が検証したコミットの SHA を明示的に指定します。既定の挙動ではデプロイ時点のブランチ先端を取得してしまい、検証したものと別のコードを公開しかねないためです。
+検証されていないコードが `main` に入らないことは、ブランチ保護の必須チェックで担保します。
 
 マイグレーションはデプロイより先に実行します。スキーマが無い状態で Worker を公開すると、全リクエストが 500 になるためです。
-
-`workflow_dispatch` で手動デプロイもできます。この場合は CI の成功を待ちません。
 
 ### 必要な GitHub Secrets
 
