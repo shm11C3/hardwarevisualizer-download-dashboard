@@ -4,6 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   "minify": true,
+  // Workers Cache answers repeat requests at the edge without invoking the
+  // Worker; each response's Cache-Control header decides what gets stored.
+  // Cache keys include the deployed version, so every deploy starts cold.
+  "cache": { "enabled": true },
   // D1 round trips dominate requests, so run near D1 rather than the visitor.
   "placement": { "mode": "smart" },
   "assets": {
