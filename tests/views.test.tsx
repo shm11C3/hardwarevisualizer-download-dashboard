@@ -51,6 +51,41 @@ describe('formatting', () => {
 })
 
 describe('DashboardPage', () => {
+  it('labels daily deltas by the interval start while keeping cumulative snapshots dated', async () => {
+    const data = previewDashboard(new URL('https://example.com/?days=7'))
+    const html = await render({
+      ...data,
+      summary: {
+        ...data.summary,
+        latestDayDownloads: 65,
+        latestDayDate: '2026-08-24',
+      },
+      series: [
+        {
+          date: '2026-08-25',
+          intervalStartDate: '2026-08-24',
+          totalDownloads: 6_864,
+          dailyDownloads: 65,
+          observed: true,
+        },
+      ],
+      releaseEvents: [
+        {
+          tag: 'v1.10.1',
+          label: 'v1.10.1',
+          prerelease: false,
+          url: 'https://example.com/releases/v1.10.1',
+          date: '2026-08-24',
+        },
+      ],
+    })
+
+    expect(html).toContain('<title>2026-08-24: 65 件</title>')
+    expect(html).toContain('<title>2026-08-25: 6,864 件</title>')
+    expect(html).toContain('2026年8月24日の増分')
+    expect(html).toContain('class="release-marker"')
+  })
+
   it('renders one bar per observed day and marks the active filters', async () => {
     const query: DashboardQuery = { days: 90, channel: 'all', scope: 'all' }
     const data = previewDashboard(new URL('https://example.com/?days=90&channel=all&scope=all'))

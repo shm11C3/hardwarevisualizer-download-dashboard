@@ -114,7 +114,7 @@ export function UpdateHealthChart({
         ))}
         {labels.map((label) => (
           <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
-            {formatter.chartLabel(label.point?.date, days === 365)}
+            {formatter.chartLabel(label.point?.intervalStartDate, days === 365)}
           </text>
         ))}
       </svg>
@@ -633,12 +633,12 @@ export function DailyChart({ series, days, formatter, releaseEvents }: DailyChar
               width={barWidth.toFixed(2)}
               height={barHeight.toFixed(2)}
             >
-              <title>{`${point.date}: ${formatNumber(value)} 件`}</title>
+              <title>{`${point.intervalStartDate}: ${formatNumber(value)} 件`}</title>
             </rect>
           )
         })}
         {releaseEvents.map((event) => {
-          const index = series.findIndex((point) => point.date === event.date)
+          const index = series.findIndex((point) => point.intervalStartDate === event.date)
           if (index < 0) return null
           const x = margin.left + index * step + step / 2
           return (
@@ -653,7 +653,7 @@ export function DailyChart({ series, days, formatter, releaseEvents }: DailyChar
         {movingAverage.length > 1 ? <path class="chart-line" d={linePath(movingAverage)} /> : null}
         {labels.map((label) => (
           <text class="chart-axis-text" x={label.x} y={height - 8} text-anchor="middle">
-            {formatter.chartLabel(label.point?.date, days === 365)}
+            {formatter.chartLabel(label.point?.intervalStartDate, days === 365)}
           </text>
         ))}
       </svg>

@@ -256,12 +256,14 @@ export function previewDashboard(url: URL): DashboardResponse {
 
   const series: SeriesPoint[] = ALL_ROWS.slice(Math.max(0, firstIndex)).map((row) => ({
     date: row.date,
+    intervalStartDate: addDays(row.date, -1),
     totalDownloads: row.total,
     dailyDownloads: row.daily,
     observed: true,
   }))
   const first = series[0] ?? {
     date: latest.date,
+    intervalStartDate: addDays(latest.date, -1),
     totalDownloads: latest.total,
     dailyDownloads: latest.daily,
     observed: true,
@@ -272,7 +274,7 @@ export function previewDashboard(url: URL): DashboardResponse {
     key: platform.key as Platform,
     label: platform.label,
     points: series.map((point) => ({
-      date: point.date,
+      date: point.intervalStartDate,
       dailyDownloads:
         point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * platform.share),
     })),
@@ -327,7 +329,7 @@ export function previewDashboard(url: URL): DashboardResponse {
       growthPercent,
       averagePerDay: round(periodDownloads / days, 2),
       latestDayDownloads: latest.daily,
-      latestDayDate: END_DATE,
+      latestDayDate: addDays(END_DATE, -1),
     },
     repoStats: repositoryStats(series),
     series,
@@ -382,7 +384,7 @@ export function previewDashboard(url: URL): DashboardResponse {
       {
         kind: 'peak',
         title: 'ピーク日',
-        value: peak?.date ?? '—',
+        value: peak?.intervalStartDate ?? '—',
         body: `${(peak?.dailyDownloads ?? 0).toLocaleString('ja-JP')} 件を記録しました。リリース直後の反応が表れています。`,
       },
       {

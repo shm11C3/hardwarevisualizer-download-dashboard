@@ -7,7 +7,7 @@ function csvField(value: string | number | boolean): string {
 
 export function buildSeriesCsv(series: SeriesPoint[]): string {
   const rows = series.map((point) =>
-    [point.date, point.dailyDownloads ?? '', point.totalDownloads, point.observed]
+    [point.intervalStartDate, point.dailyDownloads ?? '', point.totalDownloads, point.observed]
       .map(csvField)
       .join(','),
   )

@@ -19,8 +19,9 @@ function point(
   totalDownloads: number,
   dailyDownloads: number | null,
   observed = true,
+  intervalStartDate = date,
 ): SeriesPoint {
-  return { date, totalDownloads, dailyDownloads, observed }
+  return { date, intervalStartDate, totalDownloads, dailyDownloads, observed }
 }
 
 describe('buildPeriodAnalytics', () => {
@@ -37,6 +38,7 @@ describe('buildPeriodAnalytics', () => {
     expect(result?.periodDownloads).toBe(20)
     expect(result?.series[0]?.dailyDownloads).toBeNull()
     expect(result?.series[1]?.dailyDownloads).toBe(12)
+    expect(result?.latestDayDate).toBe('2026-08-21')
   })
 
   it('does not invent a one-day delta across a missing snapshot', () => {
@@ -159,7 +161,7 @@ describe('buildAdoptionCurves', () => {
 })
 
 describe('buildPlatformSeries', () => {
-  it('only calculates daily platform deltas for consecutive observations', () => {
+  it('attributes daily platform deltas to the interval start date', () => {
     const result = buildPlatformSeries(
       [
         { date: '2026-08-19', platform: 'windows', total: 100 },
@@ -173,10 +175,10 @@ describe('buildPlatformSeries', () => {
     )
 
     expect(result.find((item) => item.key === 'windows')?.points).toEqual([
-      { date: '2026-08-19', dailyDownloads: null },
-      { date: '2026-08-20', dailyDownloads: 12 },
+      { date: '2026-08-18', dailyDownloads: null },
+      { date: '2026-08-19', dailyDownloads: 12 },
+      { date: '2026-08-20', dailyDownloads: null },
       { date: '2026-08-21', dailyDownloads: null },
-      { date: '2026-08-22', dailyDownloads: null },
     ])
     expect(result.find((item) => item.key === 'macos')?.points[1]?.dailyDownloads).toBe(7)
   })
@@ -234,10 +236,45 @@ describe('buildDailySeries', () => {
     )
 
     expect(series).toEqual([
-      { date: '2026-08-20', totalDownloads: 25, dailyDownloads: 5, observed: true },
-      { date: '2026-08-21', totalDownloads: 25, dailyDownloads: null, observed: false },
-      { date: '2026-08-22', totalDownloads: 40, dailyDownloads: null, observed: true },
+      {
+        date: '2026-08-20',
+        intervalStartDate: '2026-08-19',
+        totalDownloads: 25,
+        dailyDownloads: 5,
+        observed: true,
+      },
+      {
+        date: '2026-08-21',
+        intervalStartDate: '2026-08-20',
+        totalDownloads: 25,
+        dailyDownloads: null,
+        observed: false,
+      },
+      {
+        date: '2026-08-22',
+        intervalStartDate: '2026-08-21',
+        totalDownloads: 40,
+        dailyDownloads: null,
+        observed: true,
+      },
     ])
+  })
+
+  it('keeps the snapshot date but attributes its delta to the interval start date', () => {
+    const series = buildDailySeries(
+      [
+        { date: '2026-08-24', total: 6_799 },
+        { date: '2026-08-25', total: 6_864 },
+      ],
+      '2026-08-24',
+      '2026-08-25',
+    )
+
+    expect(series.at(-1)).toMatchObject({
+      date: '2026-08-25',
+      intervalStartDate: '2026-08-24',
+      dailyDownloads: 65,
+    })
   })
 })
 
@@ -359,6 +396,13 @@ describe('calculateWeekdayAverages', () => {
     expect(result.map((item) => item.label)).toEqual(['月', '火', '水', '木', '金', '土', '日'])
     expect(result[0]).toMatchObject({ average: 30, observations: 2 })
     expect(result[1]).toMatchObject({ average: 30, observations: 1 })
+  })
+
+  it('uses the interval start weekday instead of the snapshot weekday', () => {
+    const result = calculateWeekdayAverages([point('2026-08-18', 110, 10, true, '2026-08-17')])
+
+    expect(result[0]).toMatchObject({ label: '月', average: 10, observations: 1 })
+    expect(result[1]).toMatchObject({ label: '火', average: 0, observations: 0 })
   })
 })
 
