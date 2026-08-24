@@ -164,7 +164,7 @@ export function calculateWeekdayAverages(series: SeriesPoint[]): WeekdayAverage[
 
   for (const point of series) {
     if (point.dailyDownloads === null) continue
-    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(point.date)
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(point.intervalStartDate)
     if (!match) continue
     const weekday = new Date(
       Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
@@ -205,7 +205,7 @@ export function calculateMilestone(series: SeriesPoint[]): MilestoneRecord {
             index > 0 &&
             (series[index - 1]?.totalDownloads ?? reached) < reached &&
             point.totalDownloads >= reached,
-        )?.date ?? null)
+        )?.intervalStartDate ?? null)
 
   return { reached, reachedAt, next, remaining: Math.max(0, next - current) }
 }
@@ -273,11 +273,11 @@ export function buildPlatformSeries(
     return {
       key: platform,
       label: platformLabel(platform),
-      points: dates.map((date) => {
-        const current = totals.get(date)
-        const previous = totals.get(addDays(date, -1))
+      points: dates.map((snapshotDate) => {
+        const current = totals.get(snapshotDate)
+        const previous = totals.get(addDays(snapshotDate, -1))
         return {
-          date,
+          date: addDays(snapshotDate, -1),
           dailyDownloads:
             current === undefined || previous === undefined
               ? null
@@ -305,6 +305,7 @@ export function buildDailySeries(
 
     return {
       date,
+      intervalStartDate: addDays(date, -1),
       totalDownloads: carriedTotal,
       dailyDownloads:
         isObserved && previousObserved !== undefined
@@ -482,7 +483,7 @@ export function buildPeriodAnalytics(
     growthPercent,
     averagePerDay: round(averagePerDay, 2),
     latestDayDownloads,
-    latestDayDate: latestDayDownloads === null ? null : latest.date,
+    latestDayDate: latestDayDownloads === null ? null : addDays(latest.date, -1),
     observedSnapshots,
     expectedSnapshots,
     completeness: expectedSnapshots === 0 ? 0 : round(observedSnapshots / expectedSnapshots, 4),
@@ -1187,7 +1188,7 @@ function buildInsights(
     {
       kind: 'peak',
       title: 'ピーク日',
-      value: peak ? peak.date : '算出不可',
+      value: peak ? peak.intervalStartDate : '算出不可',
       body: peak
         ? `${formatNumber(peak.dailyDownloads)} 件を記録しました。欠損日をまたぐ差分はピーク判定から除外しています。`
         : '連続した日次スナップショットが揃うと算出します。',
@@ -1364,8 +1365,8 @@ export async function getDashboard(
   const platformRows = mapPlatformTotals(requireBatchResult<PlatformTotalRow>(results[4], 4))
   const events = mapReleaseEvents(
     requireBatchResult<ReleaseEventResultRow>(results[5], 5),
-    analytics.series[0]?.date ?? analytics.latestSnapshotDate,
-    analytics.latestSnapshotDate,
+    analytics.series[0]?.intervalStartDate ?? addDays(analytics.latestSnapshotDate, -1),
+    analytics.series.at(-1)?.intervalStartDate ?? addDays(analytics.latestSnapshotDate, -1),
     timeZone,
     query.channel,
   )

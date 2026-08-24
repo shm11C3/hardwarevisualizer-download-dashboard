@@ -375,7 +375,11 @@ export function DashboardPage({
               </div>
               <CumulativeChart series={data.series} days={data.meta.days} formatter={formatter} />
               <div class="latest-day-stat">
-                <span>最新日の増分</span>
+                <span>
+                  {data.summary.latestDayDate
+                    ? `${formatter.date(data.summary.latestDayDate)}の増分`
+                    : '最新日の増分'}
+                </span>
                 <strong>
                   {data.summary.latestDayDownloads === null
                     ? '—'

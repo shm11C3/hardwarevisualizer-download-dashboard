@@ -48,7 +48,10 @@ export interface DashboardQuery {
 }
 
 export interface SeriesPoint {
+  /** Calendar date when the daily observation interval ended. */
   date: string
+  /** Calendar date when the daily observation interval started. */
+  intervalStartDate: string
   totalDownloads: number
   dailyDownloads: number | null
   observed: boolean
@@ -85,6 +88,7 @@ export interface ReleaseEvent {
 }
 
 export interface PlatformSeriesPoint {
+  /** Calendar date when the daily observation interval started. */
   date: string
   dailyDownloads: number | null
 }

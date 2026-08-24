@@ -7,12 +7,13 @@ describe('buildSeriesCsv', () => {
       buildSeriesCsv([
         {
           date: '2026-08-21',
+          intervalStartDate: '2026-08-20',
           dailyDownloads: null,
           totalDownloads: 1_234,
           observed: false,
         },
       ]),
-    ).toBe('date,daily_downloads,cumulative_downloads,observed\r\n2026-08-21,,1234,false\r\n')
+    ).toBe('date,daily_downloads,cumulative_downloads,observed\r\n2026-08-20,,1234,false\r\n')
   })
 
   it('escapes commas, quotes, and line breaks according to CSV rules', () => {
