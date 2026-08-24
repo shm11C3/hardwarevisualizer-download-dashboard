@@ -22,8 +22,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # --auto はマージせず「チェックが全て通ったらマージする」予約を入れるだけ。
-      # 実際のマージは Deploy ワークフローの verify ジョブ、つまり型チェック、
-      # Biome、テストが成功してから GitHub 側で行われる。
+      # 実際のマージは CI ワークフローの verify ジョブ、つまり型チェック、Biome、
+      # テストが成功してから GitHub 側で行われる。
       - name: Enable auto-merge
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         env:

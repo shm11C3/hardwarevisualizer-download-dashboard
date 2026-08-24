@@ -197,11 +197,20 @@ curl -X POST https://YOUR_WORKER_DOMAIN/api/admin/collect \
 
 以後は `wrangler.jsonc` の Cron Trigger により、毎日 15:10 UTC、つまり 00:10 JST に収集されます。
 
-## GitHub Actions での自動デプロイ
+## GitHub Actions での CI とデプロイ
 
-`.github/workflows/deploy.yml` により、`main` へ push すると型チェック、Biome、テストを実行し、通過した場合のみ D1 マイグレーションの適用と Worker のデプロイを行います。Pull Request では検証のみ実行し、デプロイはしません。
+検証と公開は別のワークフローに分かれています。
+
+| ワークフロー | 起動条件 | 内容 |
+|---|---|---|
+| `.github/workflows/ci.yml` | Pull Request と `main` への push | 型チェック、Biome、テスト |
+| `.github/workflows/deploy.yml` | `main` の CI が成功したとき | D1 マイグレーション適用、Worker デプロイ |
+
+デプロイは push ではなく CI の完了イベントを受けて起動し、CI が失敗した回は実行されません。分離しても未検証のコードが公開されないようにするためです。チェックアウトは CI が検証したコミットの SHA を明示的に指定します。既定の挙動ではデプロイ時点のブランチ先端を取得してしまい、検証したものと別のコードを公開しかねないためです。
 
 マイグレーションはデプロイより先に実行します。スキーマが無い状態で Worker を公開すると、全リクエストが 500 になるためです。
+
+`workflow_dispatch` で手動デプロイもできます。この場合は CI の成功を待ちません。
 
 ### 必要な GitHub Secrets
 
@@ -220,7 +229,7 @@ API トークンは Cloudflare ダッシュボードの My Profile、API Tokens 
 
 `.github/dependabot.yml` により、毎週月曜 09:00 JST に npm と GitHub Actions の更新 PR が作成されます。マイナーとパッチは本番用と開発用にまとめられ、メジャーは個別の PR になります。
 
-`.github/workflows/dependabot-auto-merge.yml` は、メジャー以外の Dependabot PR に auto-merge を予約します。auto-merge は即座にマージするのではなく、必須チェックが全て通った時点で GitHub がマージする仕組みです。つまり `deploy.yml` の verify ジョブ、型チェックと Biome とテストが成功しない限りマージされません。メジャー更新は変更履歴を読んでから手動でマージします。
+`.github/workflows/dependabot-auto-merge.yml` は、メジャー以外の Dependabot PR に auto-merge を予約します。auto-merge は即座にマージするのではなく、必須チェックが全て通った時点で GitHub がマージする仕組みです。つまり CI の verify ジョブ、型チェックと Biome とテストが成功しない限りマージされません。メジャー更新は変更履歴を読んでから手動でマージします。
 
 ### 有効化に必要なリポジトリ設定
 
@@ -229,9 +238,11 @@ auto-merge は次の2つが揃っていないと機能しません。どちら�
 | 場所 | 設定 |
 |---|---|
 | Settings、General、Pull Requests | Allow auto-merge を有効化 |
-| Settings、Rules または Branches | `main` に対して verify を必須チェックに指定 |
+| Settings、Rules または Branches | `main` に対して `CI / Typecheck, lint, test` を必須チェックに指定 |
 
 必須チェックを指定していない状態では、auto-merge は待つ対象が無いため予約できません。テストを待たずにマージされる事故を防ぐ意味でも、ブランチ保護は必須です。
+
+`dependabot.yml` で指定するラベルは、Dependabot が自分で作ることはありません。リポジトリに存在しないラベル名を書くと設定エラーになるため、`dependencies` と `github-actions` をあらかじめ作成してあります。
 
 ## API
 
@@ -307,7 +318,9 @@ npm test
 
 ```text
 .
-├── .github/workflows/deploy.yml
+├── .github/
+│   ├── dependabot.yml
+│   └── workflows/     ci.yml, deploy.yml, dependabot-auto-merge.yml
 ├── migrations/
 │   ├── 0001_initial.sql
 │   └── 0002_repo_stats.sql
