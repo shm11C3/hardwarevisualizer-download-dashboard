@@ -24,11 +24,11 @@
     "hono": "4.13.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.8",
+    "@biomejs/biome": "2.5.9",
     "@cloudflare/workers-types": "5.20260821.1",
     "typescript": "7.0.2",
-    "vitest": "4.1.10",
-    "wrangler": "4.124.0"
+    "vitest": "4.1.11",
+    "wrangler": "4.125.0"
   },
   "engines": {
     "node": ">=22"
