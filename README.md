@@ -365,4 +365,5 @@ npm test
 - スタイルシートは `/styles.css?v=<内容ハッシュ>` として読み込みます。バージョンは Workers Assets が返す ETag から取得し、Worker の isolate 単位でメモ化します。CSS を変更すると URL が変わるため、古いキャッシュを持つブラウザに新しい HTML と古い CSS が同時に届くことはありません。`public/styles.css` を編集する際に手作業でのバージョン更新は不要です。
 - `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みは同じデータの別ビューであり、`?t=` はキャッシュ回避用のため、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは既定でリクエスト元を使います。独自ドメインと `*.workers.dev` の両方で応答する場合は、`wrangler.jsonc` の `vars` に `CANONICAL_ORIGIN` を設定してください。未設定だと各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
 - `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
+- `/`、`/api/dashboard`、`/api/export.csv` は、正規化したクエリ単位で最大5分間、エッジ（Cache API）と isolate メモリにキャッシュされます。画面の「更新」リンクが付与する `t` パラメータは、従来どおり両方のキャッシュをバイパスします。Cache API はカスタムドメインで確実に機能し、workers.dev では主に isolate メモリキャッシュが機能します。
 - `scope=all` は署名や更新メタデータも含むため、利用者数の近似には向きません。

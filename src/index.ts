@@ -1,11 +1,13 @@
 import { Hono } from 'hono'
 import { collectAll } from './lib/collector'
+import { edgeCache } from './lib/edge-cache'
 import api from './routes/api'
 import page, { notFoundPage } from './routes/page'
 import type { AppEnv } from './types'
 
 const app = new Hono<AppEnv>()
 
+app.use('*', edgeCache())
 app.route('/', page)
 app.route('/api', api)
 
