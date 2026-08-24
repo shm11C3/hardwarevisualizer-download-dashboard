@@ -1226,12 +1226,33 @@ function requireBatchResult<T>(result: D1Result<unknown> | undefined, index: num
   return result as D1Result<T>
 }
 
+function describeSessionRoute(meta: D1Meta): string {
+  const region = meta.served_by_region ?? 'unknown-region'
+  if (meta.served_by_primary === undefined) {
+    return region
+  }
+  return `${region}:${meta.served_by_primary ? 'primary' : 'replica'}`
+}
+
+// 読み取りレプリケーション有効化後、クエリがレプリカから配信されているかを
+// Workers Logs で確認するためのログ。
+function logSessionRouting(source: string, results: (D1Result<unknown> | undefined)[]): void {
+  const routes = new Set<string>()
+  for (const result of results) {
+    if (result) {
+      routes.add(describeSessionRoute(result.meta))
+    }
+  }
+  console.log(JSON.stringify({ event: 'd1-session-routing', source, routes: [...routes] }))
+}
+
 export async function getDashboardSeries(
   env: CloudflareBindings,
   query: DashboardQuery,
 ): Promise<SeriesPoint[]> {
   const session = env.DB.withSession('first-unconstrained')
   const result = await dailyTotalsStatement(session, query).all<DailyTotalRow>()
+  logSessionRouting('dashboard-series', [result])
   const analytics = buildPeriodAnalytics(mapDailyTotals(result), query.days)
   return analytics?.series ?? []
 }
@@ -1254,6 +1275,7 @@ export async function getDashboard(
   const analytics = buildPeriodAnalytics(totals, query.days)
 
   if (!analytics) {
+    logSessionRouting('dashboard', [collectionBatchResult, totalsBatchResult])
     return {
       status: 'empty',
       meta: {
@@ -1318,6 +1340,7 @@ export async function getDashboard(
     adoptionCurveRowsStatement(session, query),
     repositoryStatsStatement(session, analytics.latestSnapshotDate),
   ])
+  logSessionRouting('dashboard', [collectionBatchResult, totalsBatchResult, ...results])
   const platforms = mapPlatformBreakdown(
     requireBatchResult<PlatformRow>(results[0], 0),
     analytics.periodDownloads,
