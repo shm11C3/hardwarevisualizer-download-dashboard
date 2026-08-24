@@ -355,6 +355,8 @@ npm test
 ## 運用上の注意
 
 - Cron Trigger の時刻は UTC です。
+- Smart Placement を有効化しており、Worker は D1 に近いリージョンで実行される場合があります。
+- 読み取りは D1 Sessions API（`first-unconstrained`）経由のため、Cloudflare ダッシュボードで D1 の Read Replication を有効化するだけで読み取りがレプリカに分散されます。コード変更は不要です。
 - 本番では `GITHUB_TOKEN` を必ず設定してください。未認証のレート制限は送信元 IP 単位で、Workers の外向き IP は共有されているため、未設定だと 403 で収集が失敗します。ローカル開発では自宅などの専有 IP から発信するため未設定でも成功しますが、本番で同じとは限りません。
 - Traffic API は直近14日分だけを返します。収集停止中に14日を超えて失われた views / clones の日別履歴は復元できません。
 - `GITHUB_TOKEN` を設定する場合は必ず有効な値にしてください。無効な値を入れると GitHub が全リクエストを 401 で拒否し、未設定の場合より状況が悪化します。

@@ -330,6 +330,17 @@ export async function collectDownloads(
       .bind(snapshotDate, capturedAt, snapshotDate, snapshotDate)
       .run()
 
+    // Without fresh statistics SQLite picks a plan that scans every snapshot row
+    // instead of the covering indexes. The daily write is the one moment the data
+    // changes, so refresh here; a failure only costs plan quality, never the run.
+    try {
+      await env.DB.prepare('PRAGMA optimize').run()
+    } catch (error) {
+      console.warn(
+        JSON.stringify({ message: 'PRAGMA optimize failed', error: errorMessage(error) }),
+      )
+    }
+
     const durationMs = Date.now() - startMs
     await env.DB.prepare(
       `

@@ -112,6 +112,16 @@ interface KindDailyRow {
   updater_total: number
 }
 
+interface ReleaseEventResultRow {
+  tag: string
+  label: string
+  publishedAt: string
+  prerelease: number
+  url: string
+}
+
+type DbReader = Pick<D1Database, 'prepare'>
+
 export interface LatestVersionRow {
   tag: string
   publishedAt: string
@@ -536,13 +546,12 @@ export function buildAdoptionCurves(
     }))
 }
 
-async function adoptionCurveRows(
-  database: D1Database,
+function adoptionCurveRowsStatement(
+  database: DbReader,
   query: DashboardQuery,
-): Promise<AdoptionCurveRow[]> {
-  const result = await database
-    .prepare(
-      `
+): D1PreparedStatement {
+  return database.prepare(
+    `
         WITH recent_tags AS (
           SELECT
             r.tag_name AS tag,
@@ -571,23 +580,26 @@ async function adoptionCurveRows(
         GROUP BY recent_tags.tag, s.snapshot_date
         ORDER BY recent_tags.published_at DESC, s.snapshot_date ASC
       `,
-    )
-    .all<AdoptionCurveRow>()
+  )
+}
 
+function mapAdoptionCurveRows(result: D1Result<AdoptionCurveRow>): AdoptionCurveRow[] {
   return (result.results ?? []).map((row) => ({ ...row, downloads: numberValue(row.downloads) }))
 }
 
-async function lastCollection(database: D1Database): Promise<CollectionRunSummary | null> {
-  const row = await database
-    .prepare(
-      `
+function lastCollectionStatement(database: DbReader): D1PreparedStatement {
+  return database.prepare(
+    `
         SELECT started_at, finished_at, status, fetched_releases, fetched_assets, duration_ms
         FROM collection_runs
         ORDER BY started_at DESC
         LIMIT 1
       `,
-    )
-    .first<RunRow>()
+  )
+}
+
+function mapLastCollection(result: D1Result<RunRow>): CollectionRunSummary | null {
+  const row = result.results?.[0] ?? null
 
   if (!row) {
     return null
@@ -603,10 +615,9 @@ async function lastCollection(database: D1Database): Promise<CollectionRunSummar
   }
 }
 
-async function dailyTotals(database: D1Database, query: DashboardQuery): Promise<DailyTotalRow[]> {
-  const result = await database
-    .prepare(
-      `
+function dailyTotalsStatement(database: DbReader, query: DashboardQuery): D1PreparedStatement {
+  return database.prepare(
+    `
         SELECT s.snapshot_date AS date, SUM(s.download_count) AS total
         FROM snapshots s
         INNER JOIN assets a ON a.id = s.asset_id
@@ -615,21 +626,18 @@ async function dailyTotals(database: D1Database, query: DashboardQuery): Promise
         GROUP BY s.snapshot_date
         ORDER BY s.snapshot_date ASC
       `,
-    )
-    .all<DailyTotalRow>()
+  )
+}
 
+function mapDailyTotals(result: D1Result<DailyTotalRow>): DailyTotalRow[] {
   return (result.results ?? []).map((row) => ({
     date: row.date,
     total: numberValue(row.total),
   }))
 }
 
-async function repositoryStats(
-  database: D1Database,
-  startDate: string,
-  endDate: string,
-): Promise<RepoStats> {
-  const result = await database
+function repositoryStatsStatement(database: DbReader, endDate: string): D1PreparedStatement {
+  return database
     .prepare(
       `
         SELECT
@@ -646,18 +654,23 @@ async function repositoryStats(
       `,
     )
     .bind(endDate)
-    .all<RepoStatRow>()
+}
 
+function mapRepositoryStats(
+  result: D1Result<RepoStatRow>,
+  startDate: string,
+  endDate: string,
+): RepoStats {
   return buildRepoStats(result.results ?? [], startDate, endDate)
 }
 
-async function platformTotals(
-  database: D1Database,
+function platformTotalsStatement(
+  database: DbReader,
   query: DashboardQuery,
   startDate: string,
   endDate: string,
-): Promise<PlatformTotalRow[]> {
-  const result = await database
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         SELECT s.snapshot_date AS date, a.platform, SUM(s.download_count) AS total
@@ -670,21 +683,15 @@ async function platformTotals(
       `,
     )
     .bind(startDate, endDate)
-    .all<PlatformTotalRow>()
+}
 
+function mapPlatformTotals(result: D1Result<PlatformTotalRow>): PlatformTotalRow[] {
   return (result.results ?? []).map((row) => ({ ...row, total: numberValue(row.total) }))
 }
 
-async function releaseEvents(
-  database: D1Database,
-  startDate: string,
-  endDate: string,
-  timeZone: string,
-  channel: DashboardQuery['channel'],
-): Promise<ReleaseEvent[]> {
-  const result = await database
-    .prepare(
-      `
+function releaseEventsStatement(database: DbReader): D1PreparedStatement {
+  return database.prepare(
+    `
         SELECT
           tag_name AS tag,
           COALESCE(NULLIF(MAX(name), ''), tag_name) AS label,
@@ -696,9 +703,16 @@ async function releaseEvents(
         GROUP BY tag_name
         ORDER BY publishedAt ASC
       `,
-    )
-    .all<{ tag: string; label: string; publishedAt: string; prerelease: number; url: string }>()
+  )
+}
 
+function mapReleaseEvents(
+  result: D1Result<ReleaseEventResultRow>,
+  startDate: string,
+  endDate: string,
+  timeZone: string,
+  channel: DashboardQuery['channel'],
+): ReleaseEvent[] {
   return selectReleaseEvents(
     (result.results ?? []).map((row) => ({ ...row, prerelease: Boolean(row.prerelease) })),
     startDate,
@@ -708,15 +722,14 @@ async function releaseEvents(
   )
 }
 
-async function updateHealth(
-  database: D1Database,
+function updateHealthStatement(
+  database: DbReader,
   query: DashboardQuery,
-  startDate: string,
   endDate: string,
   baselineDate: string,
-): Promise<UpdateHealth> {
+): D1PreparedStatement {
   const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
-  const result = await database
+  return database
     .prepare(
       `
         SELECT
@@ -736,8 +749,14 @@ async function updateHealth(
       `,
     )
     .bind(baselineDate, endDate)
-    .all<KindDailyRow>()
+}
 
+function mapUpdateHealth(
+  result: D1Result<KindDailyRow>,
+  startDate: string,
+  endDate: string,
+  baselineDate: string,
+): UpdateHealth {
   const rows = result.results ?? []
   const installerRows = rows.map((row) => ({ date: row.date, total: row.installer_total }))
   const updaterRows = rows.map((row) => ({ date: row.date, total: row.updater_total }))
@@ -760,12 +779,12 @@ async function updateHealth(
   }
 }
 
-async function latestVersionRows(
-  database: D1Database,
+function latestVersionRowsStatement(
+  database: DbReader,
   query: DashboardQuery,
   currentDate: string,
   baselineDate: string,
-): Promise<LatestVersionRow[]> {
+): D1PreparedStatement {
   const releaseChannelClause = query.channel === 'stable' ? 'AND prerelease = 0' : ''
   const assetScopeClause =
     query.scope === 'installers'
@@ -773,7 +792,7 @@ async function latestVersionRows(
       : query.scope === 'distribution'
         ? "AND a.kind IN ('installer', 'updater', 'archive')"
         : ''
-  const result = await database
+  return database
     .prepare(
       `
         WITH latest_tag AS (
@@ -812,8 +831,9 @@ async function latestVersionRows(
       `,
     )
     .bind(currentDate, baselineDate)
-    .all<{ tag: string; publishedAt: string; downloads: number }>()
+}
 
+function mapLatestVersionRows(result: D1Result<LatestVersionRow>): LatestVersionRow[] {
   return (result.results ?? []).map((row) => ({
     tag: row.tag,
     publishedAt: row.publishedAt,
@@ -833,15 +853,13 @@ function share(
   return currentTotal > 0 ? round(currentItemTotal / currentTotal, 4) : 0
 }
 
-async function platformBreakdown(
-  database: D1Database,
+function platformBreakdownStatement(
+  database: DbReader,
   query: DashboardQuery,
   currentDate: string,
   baselineDate: string,
-  periodDownloads: number,
-  totalDownloads: number,
-): Promise<BreakdownItem[]> {
-  const result = await database
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         WITH current_snapshot AS (
@@ -873,8 +891,13 @@ async function platformBreakdown(
       `,
     )
     .bind(currentDate, baselineDate)
-    .all<PlatformRow>()
+}
 
+function mapPlatformBreakdown(
+  result: D1Result<PlatformRow>,
+  periodDownloads: number,
+  totalDownloads: number,
+): BreakdownItem[] {
   return (result.results ?? []).map((row) => {
     const downloads = numberValue(row.downloads)
     const currentTotal = numberValue(row.total_downloads)
@@ -906,15 +929,13 @@ export function buildArchitectureBreakdown(
   })
 }
 
-async function architectureBreakdown(
-  database: D1Database,
+function architectureBreakdownStatement(
+  database: DbReader,
   query: DashboardQuery,
   currentDate: string,
   baselineDate: string,
-  periodDownloads: number,
-  totalDownloads: number,
-): Promise<BreakdownItem[]> {
-  const result = await database
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         WITH current_snapshot AS (
@@ -946,20 +967,23 @@ async function architectureBreakdown(
       `,
     )
     .bind(currentDate, baselineDate)
-    .all<ArchitectureBreakdownRow>()
+}
 
+function mapArchitectureBreakdown(
+  result: D1Result<ArchitectureBreakdownRow>,
+  periodDownloads: number,
+  totalDownloads: number,
+): BreakdownItem[] {
   return buildArchitectureBreakdown(result.results ?? [], periodDownloads, totalDownloads)
 }
 
-async function releaseBreakdown(
-  database: D1Database,
+function releaseBreakdownStatement(
+  database: DbReader,
   query: DashboardQuery,
   currentDate: string,
   baselineDate: string,
-  periodDownloads: number,
-  totalDownloads: number,
-): Promise<ReleaseBreakdownItem[]> {
-  const result = await database
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         WITH current_snapshot AS (
@@ -996,8 +1020,13 @@ async function releaseBreakdown(
       `,
     )
     .bind(currentDate, baselineDate)
-    .all<ReleaseRow>()
+}
 
+function mapReleaseBreakdown(
+  result: D1Result<ReleaseRow>,
+  periodDownloads: number,
+  totalDownloads: number,
+): ReleaseBreakdownItem[] {
   return (result.results ?? []).map((row) => {
     const downloads = numberValue(row.downloads)
     const currentTotal = numberValue(row.total_downloads)
@@ -1014,15 +1043,13 @@ async function releaseBreakdown(
   })
 }
 
-async function topAssets(
-  database: D1Database,
+function topAssetsStatement(
+  database: DbReader,
   query: DashboardQuery,
   currentDate: string,
   baselineDate: string,
-  periodDownloads: number,
-  totalDownloads: number,
-): Promise<AssetBreakdownItem[]> {
-  const result = await database
+): D1PreparedStatement {
+  return database
     .prepare(
       `
         WITH current_snapshot AS (
@@ -1058,8 +1085,13 @@ async function topAssets(
       `,
     )
     .bind(currentDate, baselineDate)
-    .all<AssetRow>()
+}
 
+function mapTopAssets(
+  result: D1Result<AssetRow>,
+  periodDownloads: number,
+  totalDownloads: number,
+): AssetBreakdownItem[] {
   return (result.results ?? []).map((row) => {
     const downloads = numberValue(row.downloads)
     const currentTotal = numberValue(row.total_downloads)
@@ -1187,6 +1219,23 @@ function buildInsights(
   ]
 }
 
+function requireBatchResult<T>(result: D1Result<unknown> | undefined, index: number): D1Result<T> {
+  if (!result) {
+    throw new Error(`D1 batch result ${index} is missing`)
+  }
+  return result as D1Result<T>
+}
+
+export async function getDashboardSeries(
+  env: CloudflareBindings,
+  query: DashboardQuery,
+): Promise<SeriesPoint[]> {
+  const session = env.DB.withSession('first-unconstrained')
+  const result = await dailyTotalsStatement(session, query).all<DailyTotalRow>()
+  const analytics = buildPeriodAnalytics(mapDailyTotals(result), query.days)
+  return analytics?.series ?? []
+}
+
 export async function getDashboard(
   env: CloudflareBindings,
   query: DashboardQuery,
@@ -1195,8 +1244,13 @@ export async function getDashboard(
   const repo = env.GITHUB_REPO ?? 'HardwareVisualizer'
   const timeZone = env.TIME_ZONE ?? 'Asia/Tokyo'
   const generatedAt = new Date().toISOString()
-  const collection = await lastCollection(env.DB)
-  const totals = await dailyTotals(env.DB, query)
+  const session = env.DB.withSession('first-unconstrained')
+  const [collectionBatchResult, totalsBatchResult] = await session.batch([
+    lastCollectionStatement(session),
+    dailyTotalsStatement(session, query),
+  ])
+  const collection = mapLastCollection(requireBatchResult<RunRow>(collectionBatchResult, 0))
+  const totals = mapDailyTotals(requireBatchResult<DailyTotalRow>(totalsBatchResult, 1))
   const analytics = buildPeriodAnalytics(totals, query.days)
 
   if (!analytics) {
@@ -1217,71 +1271,96 @@ export async function getDashboard(
     }
   }
 
-  const [
-    platforms,
-    architectures,
-    releases,
-    assets,
-    platformRows,
-    events,
-    health,
-    versionRows,
-    adoptionRows,
-    repoStats,
-  ] = await Promise.all([
-    platformBreakdown(
-      env.DB,
+  const results = await session.batch([
+    platformBreakdownStatement(
+      session,
       query,
       analytics.latestSnapshotDate,
       analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
     ),
-    architectureBreakdown(
-      env.DB,
+    architectureBreakdownStatement(
+      session,
       query,
       analytics.latestSnapshotDate,
       analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
     ),
-    releaseBreakdown(
-      env.DB,
+    releaseBreakdownStatement(
+      session,
       query,
       analytics.latestSnapshotDate,
       analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
     ),
-    topAssets(
-      env.DB,
+    topAssetsStatement(
+      session,
       query,
       analytics.latestSnapshotDate,
       analytics.effectiveBaselineDate,
-      analytics.periodDownloads,
-      analytics.totalDownloads,
     ),
-    platformTotals(env.DB, query, analytics.effectiveBaselineDate, analytics.latestSnapshotDate),
-    releaseEvents(
-      env.DB,
-      analytics.series[0]?.date ?? analytics.latestSnapshotDate,
-      analytics.latestSnapshotDate,
-      timeZone,
-      query.channel,
-    ),
-    updateHealth(
-      env.DB,
+    platformTotalsStatement(
+      session,
       query,
-      analytics.series[0]?.date ?? analytics.requestedStartDate,
+      analytics.effectiveBaselineDate,
+      analytics.latestSnapshotDate,
+    ),
+    releaseEventsStatement(session),
+    updateHealthStatement(
+      session,
+      query,
       analytics.latestSnapshotDate,
       analytics.effectiveBaselineDate,
     ),
-    latestVersionRows(env.DB, query, analytics.latestSnapshotDate, analytics.effectiveBaselineDate),
-    adoptionCurveRows(env.DB, query),
-    // Stars and traffic can predate download tracking, so use the requested
-    // window start rather than the download series' clamped start.
-    repositoryStats(env.DB, analytics.requestedStartDate, analytics.latestSnapshotDate),
+    latestVersionRowsStatement(
+      session,
+      query,
+      analytics.latestSnapshotDate,
+      analytics.effectiveBaselineDate,
+    ),
+    adoptionCurveRowsStatement(session, query),
+    repositoryStatsStatement(session, analytics.latestSnapshotDate),
   ])
+  const platforms = mapPlatformBreakdown(
+    requireBatchResult<PlatformRow>(results[0], 0),
+    analytics.periodDownloads,
+    analytics.totalDownloads,
+  )
+  const architectures = mapArchitectureBreakdown(
+    requireBatchResult<ArchitectureBreakdownRow>(results[1], 1),
+    analytics.periodDownloads,
+    analytics.totalDownloads,
+  )
+  const releases = mapReleaseBreakdown(
+    requireBatchResult<ReleaseRow>(results[2], 2),
+    analytics.periodDownloads,
+    analytics.totalDownloads,
+  )
+  const assets = mapTopAssets(
+    requireBatchResult<AssetRow>(results[3], 3),
+    analytics.periodDownloads,
+    analytics.totalDownloads,
+  )
+  const platformRows = mapPlatformTotals(requireBatchResult<PlatformTotalRow>(results[4], 4))
+  const events = mapReleaseEvents(
+    requireBatchResult<ReleaseEventResultRow>(results[5], 5),
+    analytics.series[0]?.date ?? analytics.latestSnapshotDate,
+    analytics.latestSnapshotDate,
+    timeZone,
+    query.channel,
+  )
+  const health = mapUpdateHealth(
+    requireBatchResult<KindDailyRow>(results[6], 6),
+    analytics.series[0]?.date ?? analytics.requestedStartDate,
+    analytics.latestSnapshotDate,
+    analytics.effectiveBaselineDate,
+  )
+  const versionRows = mapLatestVersionRows(requireBatchResult<LatestVersionRow>(results[7], 7))
+  const adoptionRows = mapAdoptionCurveRows(requireBatchResult<AdoptionCurveRow>(results[8], 8))
+  // Stars and traffic can predate download tracking, so use the requested
+  // window start rather than the download series' clamped start.
+  const repoStats = mapRepositoryStats(
+    requireBatchResult<RepoStatRow>(results[9], 9),
+    analytics.requestedStartDate,
+    analytics.latestSnapshotDate,
+  )
   const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
 
   return {
