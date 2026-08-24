@@ -6,4 +6,5 @@ interface CloudflareBindings {
   GITHUB_TOKEN?: string
   COLLECT_TOKEN?: string
   TIME_ZONE?: string
+  CANONICAL_ORIGIN?: string
 }

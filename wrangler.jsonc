@@ -21,6 +21,9 @@
     "GITHUB_OWNER": "shm11C3",
     "GITHUB_REPO": "HardwareVisualizer",
     "TIME_ZONE": "Asia/Tokyo"
+    // CANONICAL_ORIGIN: 独自ドメインと workers.dev の両方で応答する場合に、
+    // インデックスさせたいオリジン (例 "https://example.com") を設定します。
+    // 未設定ならリクエストのオリジンを canonical として使います。
   },
   "triggers": {
     "crons": ["10 15 * * *"]

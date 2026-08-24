@@ -7,7 +7,11 @@ const GITHUB_ICON_PATH =
 const DESCRIPTION =
   'HardwareVisualizer の GitHub Release ダウンロードを日次で記録し、推移を分析するダッシュボード'
 
-export function Layout({ stylesheet, children }: PropsWithChildren<{ stylesheet: string }>) {
+export function Layout({
+  stylesheet,
+  canonical,
+  children,
+}: PropsWithChildren<{ stylesheet: string; canonical?: string }>) {
   return (
     <>
       {raw('<!doctype html>')}
@@ -18,6 +22,8 @@ export function Layout({ stylesheet, children }: PropsWithChildren<{ stylesheet:
           <meta name="description" content={DESCRIPTION} />
           <meta name="theme-color" content="#0d1220" />
           <title>HardwareVisualizer Download Analytics</title>
+          {/* Absent on pages that have no canonical URL to name, such as 404s. */}
+          {canonical ? <link rel="canonical" href={canonical} /> : null}
           <link rel="icon" href="/favicon.ico" sizes="any" />
           <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
           <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
