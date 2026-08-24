@@ -333,4 +333,5 @@ npm test
 - アセットのファイル名規則が変わった場合は `src/lib/assets.ts` の分類ルールを更新してください。
 - スタイルシートは `/styles.css?v=<内容ハッシュ>` として読み込みます。バージョンは Workers Assets が返す ETag から取得し、Worker の isolate 単位でメモ化します。CSS を変更すると URL が変わるため、古いキャッシュを持つブラウザに新しい HTML と古い CSS が同時に届くことはありません。`public/styles.css` を編集する際に手作業でのバージョン更新は不要です。
 - `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
+- `/`、`/api/dashboard`、`/api/export.csv` は、正規化したクエリ単位で最大5分間、エッジ（Cache API）と isolate メモリにキャッシュされます。画面の「更新」リンクが付与する `t` パラメータは、従来どおり両方のキャッシュをバイパスします。Cache API はカスタムドメインで確実に機能し、workers.dev では主に isolate メモリキャッシュが機能します。
 - `scope=all` は署名や更新メタデータも含むため、利用者数の近似には向きません。
