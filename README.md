@@ -319,6 +319,7 @@ npm test
 │   ├── lib/
 │   │   ├── analytics.ts
 │   │   ├── assets.ts
+│   │   ├── canonical.ts <link rel="canonical"> の URL 決定
 │   │   ├── collector.ts
 │   │   ├── date.ts
 │   │   ├── github.ts
@@ -349,5 +350,6 @@ npm test
 - GitHub 上でリリースを削除して同じタグで作り直すと、新しい Release ID の行が追加されます。旧行と旧アセットは履歴保持のために残し、リリース別の表示ではタグ単位で合算します。
 - アセットのファイル名規則が変わった場合は `src/lib/assets.ts` の分類ルールを更新してください。
 - スタイルシートは `/styles.css?v=<内容ハッシュ>` として読み込みます。バージョンは Workers Assets が返す ETag から取得し、Worker の isolate 単位でメモ化します。CSS を変更すると URL が変わるため、古いキャッシュを持つブラウザに新しい HTML と古い CSS が同時に届くことはありません。`public/styles.css` を編集する際に手作業でのバージョン更新は不要です。
+- `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みは同じデータの別ビューであり、`?t=` はキャッシュ回避用のため、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは既定でリクエスト元を使います。独自ドメインと `*.workers.dev` の両方で応答する場合は、`wrangler.jsonc` の `vars` に `CANONICAL_ORIGIN` を設定してください。未設定だと各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
 - `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
 - `scope=all` は署名や更新メタデータも含むため、利用者数の近似には向きません。

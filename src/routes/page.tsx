@@ -2,6 +2,7 @@ import type { NotFoundHandler } from 'hono'
 import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
 import { stylesheetHref } from '../lib/asset-version'
+import { canonicalHref } from '../lib/canonical'
 import { CACHE_BUST_PARAM, coerceDashboardQuery } from '../lib/query'
 import { DOCUMENT_SECURITY_HEADERS } from '../lib/security'
 import type { AppEnv } from '../types'
@@ -25,12 +26,15 @@ page.get('/', async (context) => {
   }
 
   const stylesheet = await stylesheetHref(context.env, url.origin)
+  // Filters and the refresh nonce only vary the URL, so every rendering of this
+  // route points at the same canonical document.
+  const canonical = canonicalHref(context.env, url)
 
   try {
     const data = await getDashboard(context.env, query)
     context.header('Cache-Control', bypassCache ? 'no-store' : DOCUMENT_CACHE_CONTROL)
     return context.html(
-      <Layout stylesheet={stylesheet}>
+      <Layout stylesheet={stylesheet} canonical={canonical}>
         <DashboardPage data={data} query={query} nonce={nonce} />
       </Layout>,
     )
@@ -46,7 +50,7 @@ page.get('/', async (context) => {
     )
     context.header('Cache-Control', 'no-store')
     return context.html(
-      <Layout stylesheet={stylesheet}>
+      <Layout stylesheet={stylesheet} canonical={canonical}>
         <ErrorPage query={query} nonce={nonce} />
       </Layout>,
       500,
@@ -64,6 +68,8 @@ export const notFoundPage: NotFoundHandler<AppEnv> = async (context) => {
   }
   context.header('Cache-Control', 'no-store')
   const stylesheet = await stylesheetHref(context.env, new URL(context.req.url).origin)
+  // A missing page has no canonical URL of its own, and pointing it at the
+  // dashboard would ask Google to index this 404 as if it were the dashboard.
   return context.html(
     <Layout stylesheet={stylesheet}>
       <section class="empty-state">
