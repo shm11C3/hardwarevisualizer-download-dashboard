@@ -350,6 +350,11 @@ a:focus-visible {
   flex: 0 0 auto;
 }
 
+.refresh-form {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .refresh-button {
   display: inline-flex;
   gap: 8px;
@@ -364,7 +369,9 @@ a:focus-visible {
   background: var(--surface-raised);
   font-size: 12px;
   font-weight: 750;
+  font-family: inherit;
   text-decoration: none;
+  cursor: pointer;
   transition:
     color 150ms ease,
     border-color 150ms ease,
@@ -1095,7 +1102,7 @@ tbody tr:hover td {
     flex-basis: auto;
   }
 
-  .refresh-button {
+  .refresh-form {
     grid-column: 1 / -1;
   }
 
@@ -1153,7 +1160,7 @@ tbody tr:hover td {
   }
 
   .range-control,
-  .refresh-button {
+  .refresh-form {
     grid-column: auto;
   }
 

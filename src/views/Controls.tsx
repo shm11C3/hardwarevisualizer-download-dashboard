@@ -1,4 +1,4 @@
-import { dashboardHref, refreshHref } from '../lib/query'
+import { CACHE_BUST_PARAM, dashboardHref } from '../lib/query'
 import type { ChannelFilter, DashboardPageQuery, DashboardQuery, ScopeFilter } from '../types'
 
 const REFRESH_ICON_PATH = 'M20 11a8 8 0 1 0 1 4M20 4v7h-7'
@@ -59,6 +59,9 @@ function Segmented<T extends string | number>({
 }
 
 export function Controls({ query, nonce }: { query: DashboardPageQuery; nonce: number }) {
+  const trafficValues =
+    query.traffic === undefined ? [] : query.traffic.length === 0 ? [''] : query.traffic
+
   return (
     <section class="control-panel" aria-label="表示条件">
       <Segmented
@@ -82,17 +85,21 @@ export function Controls({ query, nonce }: { query: DashboardPageQuery; nonce: n
         current={query.scope}
         href={(scope) => dashboardHref(query, { scope })}
       />
-      <a
-        class="refresh-button"
-        href={refreshHref(query, nonce)}
-        rel="nofollow"
-        aria-label="最新データを再取得"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d={REFRESH_ICON_PATH} />
-        </svg>
-        更新
-      </a>
+      <form class="refresh-form" method="get" action="/">
+        <input type="hidden" name="days" value={query.days} />
+        <input type="hidden" name="channel" value={query.channel} />
+        <input type="hidden" name="scope" value={query.scope} />
+        {trafficValues.map((value) => (
+          <input type="hidden" name="traffic" value={value} />
+        ))}
+        <input type="hidden" name={CACHE_BUST_PARAM} value={nonce} />
+        <button class="refresh-button" type="submit" aria-label="最新データを再取得">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={REFRESH_ICON_PATH} />
+          </svg>
+          更新
+        </button>
+      </form>
     </section>
   )
 }
