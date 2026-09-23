@@ -55,12 +55,14 @@ export function coerceDashboardQuery(url: URL): DashboardPageQuery {
   const channel = url.searchParams.get('channel') ?? ''
   const scope = url.searchParams.get('scope') ?? ''
 
-  const selectedTraffic = new Set(
-    url.searchParams.getAll('traffic').flatMap((value) => value.split(',')),
-  )
-  const traffic = url.searchParams.has('traffic')
-    ? ALLOWED_TRAFFIC_SERIES.filter((key) => selectedTraffic.has(key))
-    : undefined
+  const requestedTraffic = url.searchParams
+    .getAll('traffic')
+    .flatMap((value) => value.split(','))
+    .filter((value) => value.length > 0)
+  const recognizedTraffic = ALLOWED_TRAFFIC_SERIES.filter((key) => requestedTraffic.includes(key))
+  const hasOnlyUnknownTraffic = requestedTraffic.length > 0 && recognizedTraffic.length === 0
+  const traffic =
+    url.searchParams.has('traffic') && !hasOnlyUnknownTraffic ? recognizedTraffic : undefined
 
   return {
     days: allowedDays.has(days) ? (days as DashboardQuery['days']) : DEFAULT_QUERY.days,
