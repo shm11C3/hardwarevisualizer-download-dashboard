@@ -1,8 +1,8 @@
 // Every filter combination the dashboard offers is a separate URL — `?days=…`,
-// `?channel=…`, `?scope=…`, plus the refresh nonce `?t=…` — and all of them
-// render the same document with the same title and description. Search Console
-// reports them as duplicates of `/`, so each page states which single URL it
-// wants indexed.
+// `?channel=…`, `?scope=…`, one or more `?traffic=…` series values, plus the
+// refresh nonce `?t=…` — and all of them render the same document with the same
+// title and description. Search Console reports them as duplicates of `/`, so
+// each page states which single URL it wants indexed.
 //
 // The origin comes from the request, which is right as long as the site answers
 // on one hostname. A deployment reachable both on its workers.dev subdomain and

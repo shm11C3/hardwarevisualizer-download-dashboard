@@ -11,6 +11,7 @@ import type {
   RepoStats,
   RepoTrafficPoint,
   SeriesPoint,
+  TrafficSeriesKey,
   UpdateHealth,
 } from '../types'
 import { type Formatter, formatDecimal, formatNumber, safeUrl } from './format'
@@ -221,7 +222,7 @@ const TRAFFIC_SERIES = [
   { key: 'viewsUniques', label: 'views uniques', className: 'views-uniques' },
   { key: 'clonesCount', label: 'clones', className: 'clones-count' },
   { key: 'clonesUniques', label: 'clones uniques', className: 'clones-uniques' },
-] as const
+] as const satisfies { key: TrafficSeriesKey; label: string; className: string }[]
 
 function trafficLinePaths(
   series: RepoTrafficPoint[],
@@ -250,17 +251,21 @@ function trafficLinePaths(
 
 function TrafficChart({
   series,
+  selectedSeries,
   days,
   formatter,
 }: {
   series: RepoTrafficPoint[]
+  selectedSeries: TrafficSeriesKey[]
   days: DashboardQuery['days']
   formatter: Formatter
 }) {
+  const selected = new Set(selectedSeries)
+  const activeSeries = TRAFFIC_SERIES.filter((item) => selected.has(item.key))
+  if (activeSeries.length === 0) return <ChartEmpty message="表示対象を1つ以上選択してください" />
+
   const values = series.flatMap((point) =>
-    TRAFFIC_SERIES.map((item) => point[item.key]).filter(
-      (value): value is number => value !== null,
-    ),
+    activeSeries.map((item) => point[item.key]).filter((value): value is number => value !== null),
   )
   if (!values.length) return <ChartEmpty message="トラフィックデータがありません" />
 
@@ -298,7 +303,7 @@ function TrafficChart({
             </>
           )
         })}
-        {TRAFFIC_SERIES.map((item) => (
+        {activeSeries.map((item) => (
           <>
             {trafficLinePaths(series, item.key, x, y).map((path) => (
               <path class={`repo-traffic-line ${item.className}`} d={path} />
@@ -331,13 +336,18 @@ function TrafficChart({
 
 export function RepoStatsCharts({
   stats,
+  filters,
+  trafficSelection,
   days,
   formatter,
 }: {
   stats: RepoStats
+  filters: Pick<DashboardQuery, 'channel' | 'scope'>
+  trafficSelection: TrafficSeriesKey[] | undefined
   days: DashboardQuery['days']
   formatter: Formatter
 }) {
+  const selectedTraffic = new Set(trafficSelection ?? TRAFFIC_SERIES.map((item) => item.key))
   return (
     <div class={stats.traffic.length ? 'repo-stats-charts with-traffic' : 'repo-stats-charts'}>
       <section class="repo-stats-chart-section">
@@ -351,16 +361,40 @@ export function RepoStatsCharts({
         <section class="repo-stats-chart-section">
           <div class="repo-chart-heading traffic-heading">
             <h3>GitHub Traffic</h3>
-            <div class="repo-traffic-legend">
-              {TRAFFIC_SERIES.map((item) => (
-                <span>
-                  <i class={item.className} />
-                  {item.label}
-                </span>
-              ))}
-            </div>
+            <span>日次</span>
           </div>
-          <TrafficChart series={stats.traffic} days={days} formatter={formatter} />
+          <form class="repo-traffic-controls" method="get" action="/">
+            <input type="hidden" name="days" value={days} />
+            <input type="hidden" name="channel" value={filters.channel} />
+            <input type="hidden" name="scope" value={filters.scope} />
+            <input type="hidden" name="traffic" value="" />
+            <fieldset class="repo-traffic-series-filter">
+              <legend>表示対象</legend>
+              <div class="repo-traffic-options">
+                {TRAFFIC_SERIES.map((item) => (
+                  <label class="repo-traffic-option">
+                    <input
+                      type="checkbox"
+                      name="traffic"
+                      value={item.key}
+                      checked={selectedTraffic.has(item.key)}
+                    />
+                    <i class={item.className} aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+                <button class="repo-traffic-apply" type="submit">
+                  反映
+                </button>
+              </div>
+            </fieldset>
+          </form>
+          <TrafficChart
+            series={stats.traffic}
+            selectedSeries={[...selectedTraffic]}
+            days={days}
+            formatter={formatter}
+          />
         </section>
       ) : null}
     </div>

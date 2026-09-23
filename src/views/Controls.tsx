@@ -1,5 +1,5 @@
 import { dashboardHref, refreshHref } from '../lib/query'
-import type { ChannelFilter, DashboardQuery, ScopeFilter } from '../types'
+import type { ChannelFilter, DashboardPageQuery, DashboardQuery, ScopeFilter } from '../types'
 
 const REFRESH_ICON_PATH = 'M20 11a8 8 0 1 0 1 4M20 4v7h-7'
 
@@ -58,7 +58,7 @@ function Segmented<T extends string | number>({
   )
 }
 
-export function Controls({ query, nonce }: { query: DashboardQuery; nonce: number }) {
+export function Controls({ query, nonce }: { query: DashboardPageQuery; nonce: number }) {
   return (
     <section class="control-panel" aria-label="表示条件">
       <Segmented
