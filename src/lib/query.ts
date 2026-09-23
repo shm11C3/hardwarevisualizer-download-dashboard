@@ -69,13 +69,10 @@ export function dashboardHref(
 }
 
 /**
- * The page itself is cached for five minutes, so the refresh control needs a
- * distinct URL to reach the origin again. The Worker treats this parameter as
- * opaque: it never feeds the query and is never echoed back into a link, so a
- * refreshed page always hands out a freshly minted value.
+ * The page itself is cached for five minutes, so the refresh form needs a
+ * distinct URL to reach the origin again. Keep this nonce in a form field
+ * rather than a crawlable link so search engines do not discover an endless
+ * sequence of unique refresh URLs. The Worker treats it as opaque and never
+ * feeds it into the dashboard query.
  */
 export const CACHE_BUST_PARAM = 't'
-
-export function refreshHref(query: DashboardQuery, nonce: number): string {
-  return `${dashboardHref(query)}&${CACHE_BUST_PARAM}=${nonce}`
-}
