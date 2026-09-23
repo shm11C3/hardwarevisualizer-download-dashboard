@@ -6,12 +6,25 @@ import type { AppEnv } from './types'
 
 const app = new Hono<AppEnv>()
 
+function isApiPath(pathname: string): boolean {
+  return pathname === '/api' || pathname.startsWith('/api/')
+}
+
+// API responses are useful to clients, but they are not search landing pages.
+// Set this before routing so success, error, and not-found responses all carry it.
+app.use('*', async (context, next) => {
+  if (isApiPath(context.req.path)) {
+    context.header('X-Robots-Tag', 'noindex')
+  }
+  await next()
+})
+
 app.route('/', page)
 app.route('/api', api)
 
 app.notFound((context) => {
   const { pathname } = new URL(context.req.url)
-  if (pathname === '/api' || pathname.startsWith('/api/')) {
+  if (isApiPath(pathname)) {
     // 404 is heuristically cacheable per RFC 9111, so opt out explicitly now
     // that Workers Cache sits in front of every response.
     context.header('Cache-Control', 'no-store')
