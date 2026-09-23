@@ -1,8 +1,20 @@
-import type { ChannelFilter, DashboardQuery, ScopeFilter } from '../types'
+import type {
+  ChannelFilter,
+  DashboardPageQuery,
+  DashboardQuery,
+  ScopeFilter,
+  TrafficSeriesKey,
+} from '../types'
 
 export const ALLOWED_DAYS: readonly DashboardQuery['days'][] = [7, 30, 90, 365]
 export const ALLOWED_CHANNELS: readonly ChannelFilter[] = ['stable', 'all']
 export const ALLOWED_SCOPES: readonly ScopeFilter[] = ['installers', 'distribution', 'all']
+export const ALLOWED_TRAFFIC_SERIES: readonly TrafficSeriesKey[] = [
+  'viewsCount',
+  'viewsUniques',
+  'clonesCount',
+  'clonesUniques',
+]
 
 export const DEFAULT_QUERY: DashboardQuery = {
   days: 30,
@@ -38,26 +50,36 @@ export function parseDashboardQuery(url: URL): DashboardQuery | null {
  * Forgiving parse for the HTML page: a hand-edited or stale link should still
  * render a dashboard, so unknown values fall back to the defaults.
  */
-export function coerceDashboardQuery(url: URL): DashboardQuery {
+export function coerceDashboardQuery(url: URL): DashboardPageQuery {
   const days = Number(url.searchParams.get('days'))
   const channel = url.searchParams.get('channel') ?? ''
   const scope = url.searchParams.get('scope') ?? ''
+
+  const requestedTraffic = url.searchParams
+    .getAll('traffic')
+    .flatMap((value) => value.split(','))
+    .filter((value) => value.length > 0)
+  const recognizedTraffic = ALLOWED_TRAFFIC_SERIES.filter((key) => requestedTraffic.includes(key))
+  const hasOnlyUnknownTraffic = requestedTraffic.length > 0 && recognizedTraffic.length === 0
+  const traffic =
+    url.searchParams.has('traffic') && !hasOnlyUnknownTraffic ? recognizedTraffic : undefined
 
   return {
     days: allowedDays.has(days) ? (days as DashboardQuery['days']) : DEFAULT_QUERY.days,
     channel: allowedChannels.has(channel) ? (channel as ChannelFilter) : DEFAULT_QUERY.channel,
     scope: allowedScopes.has(scope) ? (scope as ScopeFilter) : DEFAULT_QUERY.scope,
+    ...(traffic === undefined ? {} : { traffic }),
   }
 }
 
 /**
- * Canonical link for a dashboard view. Every filter control renders one of
- * these with a single dimension overridden, which is what lets the page work
- * as plain navigation with no client-side script.
+ * Canonical link for a dashboard view. Filter links override one dimension;
+ * the Traffic selector carries its checked series as repeated query values.
+ * This keeps the dashboard server-rendered with no client-side script.
  */
 export function dashboardHref(
-  query: DashboardQuery,
-  override: Partial<DashboardQuery> = {},
+  query: DashboardPageQuery,
+  override: Partial<DashboardPageQuery> = {},
 ): string {
   const merged = { ...query, ...override }
   const params = new URLSearchParams({
@@ -65,6 +87,10 @@ export function dashboardHref(
     channel: merged.channel,
     scope: merged.scope,
   })
+  if (merged.traffic !== undefined) {
+    if (merged.traffic.length === 0) params.append('traffic', '')
+    else for (const key of merged.traffic) params.append('traffic', key)
+  }
   return `/?${params.toString()}`
 }
 

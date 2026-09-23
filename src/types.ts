@@ -3,6 +3,7 @@ export type Architecture = 'x64' | 'arm64' | 'x86' | 'universal' | 'unknown'
 export type AssetKind = 'installer' | 'updater' | 'archive' | 'metadata' | 'other'
 export type ChannelFilter = 'stable' | 'all'
 export type ScopeFilter = 'installers' | 'distribution' | 'all'
+export type TrafficSeriesKey = 'viewsCount' | 'viewsUniques' | 'clonesCount' | 'clonesUniques'
 
 export interface AppEnv {
   Bindings: CloudflareBindings
@@ -45,6 +46,11 @@ export interface DashboardQuery {
   days: 7 | 30 | 90 | 365
   channel: ChannelFilter
   scope: ScopeFilter
+}
+
+/** Display-only series selection for the HTML dashboard. */
+export interface DashboardPageQuery extends DashboardQuery {
+  traffic?: TrafficSeriesKey[]
 }
 
 export interface SeriesPoint {

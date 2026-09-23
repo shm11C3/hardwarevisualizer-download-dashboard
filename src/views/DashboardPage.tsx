@@ -2,6 +2,7 @@ import { architectureLabel, platformLabel } from '../lib/assets'
 import type {
   AssetBreakdownItem,
   DashboardInsight,
+  DashboardPageQuery,
   DashboardQuery,
   DashboardResponse,
   EmptyDashboardResponse,
@@ -136,10 +137,12 @@ function KpiGrid({ data, formatter }: { data: DashboardResponse; formatter: Form
 function RepoStatsPanel({
   stats,
   days,
+  query,
   formatter,
 }: {
   stats: RepoStats
   days: DashboardQuery['days']
+  query: DashboardPageQuery
   formatter: Formatter
 }) {
   const hasData =
@@ -161,7 +164,13 @@ function RepoStatsPanel({
       </div>
       {hasData ? (
         <>
-          <RepoStatsCharts stats={stats} days={days} formatter={formatter} />
+          <RepoStatsCharts
+            stats={stats}
+            filters={query}
+            trafficSelection={query.traffic}
+            days={days}
+            formatter={formatter}
+          />
           {stats.traffic.length === 0 ? (
             <p class="repo-traffic-note">トラフィックは GITHUB_TOKEN に push 権限が必要です</p>
           ) : null}
@@ -316,7 +325,7 @@ export function DashboardPage({
   nonce,
 }: {
   data: DashboardResponse | EmptyDashboardResponse
-  query: DashboardQuery
+  query: DashboardPageQuery
   nonce: number
 }) {
   const formatter = createFormatter(data.meta.timeZone)
@@ -389,7 +398,12 @@ export function DashboardPage({
             </article>
           </section>
 
-          <RepoStatsPanel stats={data.repoStats} days={data.meta.days} formatter={formatter} />
+          <RepoStatsPanel
+            stats={data.repoStats}
+            days={data.meta.days}
+            query={query}
+            formatter={formatter}
+          />
 
           <article class="panel platform-trend-panel">
             <div class="panel-header">
@@ -520,7 +534,7 @@ export function DashboardPage({
   )
 }
 
-export function ErrorPage({ query, nonce }: { query: DashboardQuery; nonce: number }) {
+export function ErrorPage({ query, nonce }: { query: DashboardPageQuery; nonce: number }) {
   return (
     <>
       <Hero status={{ kind: 'error', message: 'データ取得エラー' }} />

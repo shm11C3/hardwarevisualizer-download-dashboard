@@ -1637,8 +1637,8 @@ tbody tr:hover td {
 }
 
 .repo-chart-heading,
-.repo-traffic-legend,
-.repo-traffic-legend span {
+.repo-traffic-options,
+.repo-traffic-option {
   display: flex;
   align-items: center;
 }
@@ -1660,35 +1660,83 @@ tbody tr:hover td {
   font-size: 9px;
 }
 
-.repo-traffic-legend {
+.repo-traffic-options {
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px 10px;
+  gap: 6px;
 }
 
-.repo-traffic-legend span {
-  gap: 4px;
+.repo-traffic-series-filter {
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+}
+
+.repo-traffic-series-filter legend {
+  margin-bottom: 5px;
   color: var(--text-muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.repo-traffic-option {
+  gap: 5px;
+  min-height: 27px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-muted);
+  background: var(--surface);
+  cursor: pointer;
   font-size: 8px;
 }
 
-.repo-traffic-legend i {
+.repo-traffic-option:has(input:checked) {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.repo-traffic-option input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--primary-bright);
+}
+
+.repo-traffic-option i {
   width: 12px;
   height: 3px;
   border-radius: 999px;
   background: #7c9cff;
 }
 
-.repo-traffic-legend i.views-uniques {
+.repo-traffic-option i.views-uniques {
   background: #c39cff;
 }
 
-.repo-traffic-legend i.clones-count {
+.repo-traffic-option i.clones-count {
   background: #53e6c4;
 }
 
-.repo-traffic-legend i.clones-uniques {
+.repo-traffic-option i.clones-uniques {
   background: #f4c06a;
+}
+
+.repo-traffic-apply {
+  min-height: 27px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.repo-traffic-apply:hover {
+  border-color: rgba(124, 156, 255, 0.45);
+  color: var(--text);
 }
 
 .repo-chart-frame {
@@ -1791,7 +1839,7 @@ tbody tr:hover td {
     flex-direction: column;
   }
 
-  .repo-traffic-legend {
+  .repo-traffic-options {
     justify-content: flex-start;
   }
 
