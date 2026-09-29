@@ -204,6 +204,10 @@ export function buildReleaseEffect(
   const othersAtPublish =
     installerAtPublish === undefined ? null : Math.max(0, installerAtPublish - releaseAtPublish)
   const baselineStart = addDays(publishedDate, -BASELINE_DAYS)
+  // The bars split at the same boundary as the KPIs: the release's own downloads
+  // already in the publish-date snapshot belong to the day it went out, not before.
+  const chartTotals = new Map(installer)
+  if (othersAtPublish !== null) chartTotals.set(publishedDate, othersAtPublish)
   const baselineStartTotal = installer.get(baselineStart)
   const evaluatedTotal = installer.get(evaluatedDate)
 
@@ -275,7 +279,7 @@ export function buildReleaseEffect(
       previousPerDay: previousChecks === null ? null : round(previousChecks),
       changePercent: changePercent(currentChecks, previousChecks),
     },
-    dailySeries: dailyDeltas(installer, baselineStart, evaluatedDate),
+    dailySeries: dailyDeltas(chartTotals, baselineStart, evaluatedDate),
     baselineStartDate: baselineStart,
     activitySeries: checks.size === 0 ? [] : dailyDeltas(checks, activityStart, evaluatedDate),
     markers: [release, ...(previous ? [previous] : [])].map((item) => ({

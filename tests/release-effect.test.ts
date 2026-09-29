@@ -258,6 +258,27 @@ describe('buildReleaseEffect', () => {
     expect(effect.incrementalDownloads.actual).toBe(270 + 15)
   })
 
+  it('draws publish-day downloads in the post-release bar, matching the KPIs', () => {
+    const installerTotals = data().installerTotals.map((row) =>
+      row.date >= LATEST_PUBLISHED ? { ...row, total: row.total + 15 } : row,
+    )
+    const effect = evaluate(
+      [PREVIOUS, LATEST],
+      '2026-08-23',
+      data({
+        installerTotals,
+        tagTotals: [...data().tagTotals, { tag: 'v1.11.0', date: LATEST_PUBLISHED, total: 15 }],
+      }),
+    )
+    const bar = (date: string) => effect.dailySeries.find((point) => point.date === date)?.downloads
+
+    expect(bar('2026-08-19')).toBe(42)
+    expect(bar('2026-08-20')).toBe(90 + 15)
+    expect(
+      effect.dailySeries.reduce((sum, point) => sum + (point.downloads ?? 0), 0) - 42 * 7,
+    ).toBe(effect.incrementalDownloads.actual)
+  })
+
   it('flags a baseline that contains another release', () => {
     const recent = release('v1.10.2', '2026-08-16T03:00:00Z')
     const effect = evaluate([PREVIOUS, recent, LATEST], '2026-08-23', data())
