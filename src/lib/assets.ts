@@ -7,6 +7,12 @@ export interface AssetClassification {
   isSignature: boolean
 }
 
+/**
+ * The Tauri updater manifest. The app fetches it at startup, so its download
+ * count tracks update checks rather than installs.
+ */
+export const UPDATE_MANIFEST_ASSET_NAME = 'latest.json'
+
 const SIGNATURE_PATTERN = /(?:\.sig|\.asc|\.pem|\.crt|\.minisig)$/i
 const CHECKSUM_PATTERN = /(?:^|[-_.])(?:sha(?:1|224|256|384|512)?|checksums?)(?:[-_.]|$)/i
 const METADATA_PATTERN = /(?:sbom|attestation|provenance|\.json$|\.xml$)/i

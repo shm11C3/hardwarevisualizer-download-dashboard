@@ -1,4 +1,5 @@
 import { architectureLabel, platformLabel } from '../lib/assets'
+import { BASELINE_DAYS, EVALUATION_WINDOW_DAYS } from '../lib/release-effect'
 import type {
   AssetBreakdownItem,
   DashboardInsight,
@@ -6,6 +7,7 @@ import type {
   DashboardQuery,
   DashboardResponse,
   EmptyDashboardResponse,
+  ReleaseEffect,
   RepoStats,
 } from '../types'
 import {
@@ -16,6 +18,8 @@ import {
   PlatformBreakdown,
   PlatformTrendChart,
   ReleaseBreakdown,
+  ReleaseEffectActivityChart,
+  ReleaseEffectDailyChart,
   RepoStatsCharts,
   UpdateHealthChart,
   WeekdayPattern,
@@ -26,6 +30,7 @@ import {
   type Formatter,
   formatDecimal,
   formatNumber,
+  formatSigned,
   periodText,
   safeUrl,
 } from './format'
@@ -130,6 +135,197 @@ function KpiGrid({ data, formatter }: { data: DashboardResponse; formatter: Form
         valueClass={growthClass}
         note={growthNote}
       />
+    </section>
+  )
+}
+
+type SignalTone = 'positive' | 'negative' | undefined
+
+function signalTone(value: number | null, neutral = 0): SignalTone {
+  if (value === null) return undefined
+  return value >= neutral ? 'positive' : 'negative'
+}
+
+function EffectSignal({
+  label,
+  value,
+  tone,
+  note,
+  hint,
+}: {
+  label: string
+  value: string
+  tone?: SignalTone
+  note: string
+  hint: string
+}) {
+  return (
+    <article class="effect-signal">
+      <span class="effect-signal-label">{label}</span>
+      <strong class={tone ? `effect-signal-value ${tone}` : 'effect-signal-value'}>{value}</strong>
+      <p class="effect-signal-note">{note}</p>
+      <p class="effect-signal-hint">{hint}</p>
+    </article>
+  )
+}
+
+// Signals stay "—" rather than falling back to a partial comparison. This says
+// why, so an empty card reads as a data condition and not as a broken metric.
+function unavailableNote(effect: ReleaseEffect, needsPrevious: boolean): string {
+  if (effect.day < 1) return '公開直後のため、比較できるスナップショットがまだありません'
+  if (needsPrevious && effect.previousRelease === null) return '比較できる前回リリースがありません'
+  return 'スナップショットの欠損などで同じ条件の比較ができません'
+}
+
+function ReleaseEffectSignals({ effect }: { effect: ReleaseEffect }) {
+  const { adoptionVelocity, releaseLift, incrementalDownloads, usageActivity } = effect
+  const previous = effect.previousRelease?.tag ?? '前回'
+  const day = `Day ${effect.day}`
+
+  let adoptionNote = unavailableNote(effect, true)
+  if (adoptionVelocity.current !== null && adoptionVelocity.previous !== null) {
+    adoptionNote =
+      adoptionVelocity.changePercent === null
+        ? `${previous} は ${day} 時点で 0 件のため、割合を出せません`
+        : `${effect.release.tag} ${formatNumber(adoptionVelocity.current)} 件 / ${previous} ${formatNumber(adoptionVelocity.previous)} 件（${day} 時点）`
+  }
+
+  let liftNote = unavailableNote(effect, false)
+  if (releaseLift.baselinePerDay !== null && releaseLift.postPerDay !== null) {
+    liftNote =
+      releaseLift.multiple === null
+        ? `公開前 ${BASELINE_DAYS} 日平均が 0 件のため、倍率を出せません`
+        : `公開前 ${BASELINE_DAYS} 日平均 ${formatDecimal(releaseLift.baselinePerDay)} 件/日 → 公開後 ${formatDecimal(releaseLift.postPerDay)} 件/日`
+  }
+
+  let incrementalNote = unavailableNote(effect, false)
+  if (incrementalDownloads.expected !== null && incrementalDownloads.actual !== null) {
+    incrementalNote = `通常ペースなら約 ${formatNumber(incrementalDownloads.expected)} 件 / 実績 ${formatNumber(incrementalDownloads.actual)} 件（${effect.day} 日間）`
+  }
+
+  let usageNote =
+    effect.activitySeries.length === 0
+      ? 'latest.json のダウンロード履歴がありません'
+      : unavailableNote(effect, true)
+  if (usageActivity.currentPerDay !== null && usageActivity.previousPerDay !== null) {
+    usageNote =
+      usageActivity.changePercent === null
+        ? `${previous} の同期間が 0 件/日のため、割合を出せません`
+        : `${formatDecimal(usageActivity.currentPerDay)} 件/日 / ${previous} ${formatDecimal(usageActivity.previousPerDay)} 件/日（${usageActivity.comparedDays === effect.day ? day : `公開後 ${usageActivity.comparedDays} 日間`}）`
+  }
+
+  return (
+    <div class="effect-signals">
+      <EffectSignal
+        label="採用速度"
+        value={
+          adoptionVelocity.changePercent === null
+            ? '—'
+            : `${formatSigned(adoptionVelocity.changePercent)}%`
+        }
+        tone={signalTone(adoptionVelocity.changePercent)}
+        note={adoptionNote}
+        hint="前回リリースと公開後の同じ経過日数で比べた installer 取得数"
+      />
+      <EffectSignal
+        label="Release Lift"
+        value={releaseLift.multiple === null ? '—' : `${formatDecimal(releaseLift.multiple)}x`}
+        tone={signalTone(releaseLift.multiple, 1)}
+        note={liftNote}
+        hint="公開前の通常ペースに対する、公開後の 1 日あたり installer 取得数"
+      />
+      <EffectSignal
+        label="Incremental Downloads"
+        value={
+          incrementalDownloads.incremental === null
+            ? '—'
+            : formatSigned(incrementalDownloads.incremental, 0)
+        }
+        tone={signalTone(incrementalDownloads.incremental)}
+        note={incrementalNote}
+        hint="通常ペースを超えたダウンロード数。新規ユーザー数ではありません"
+      />
+      <EffectSignal
+        label="利用活動シグナル"
+        value={
+          usageActivity.changePercent === null
+            ? '—'
+            : `${formatSigned(usageActivity.changePercent)}%`
+        }
+        tone={signalTone(usageActivity.changePercent)}
+        note={usageNote}
+        hint="起動時の更新チェック（latest.json 取得）の 1 日あたり件数。ユニークユーザー数ではありません"
+      />
+    </div>
+  )
+}
+
+function ReleaseEffectPanel({
+  effect,
+  formatter,
+}: {
+  effect: ReleaseEffect | null
+  formatter: Formatter
+}) {
+  return (
+    <section class="panel release-effect-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Growth signals</p>
+          <h2>リリース効果</h2>
+        </div>
+        {effect ? (
+          <div class="effect-release-tag">
+            <strong>{`${effect.release.tag} · Day ${effect.day}`}</strong>
+            <span>
+              {effect.previousRelease ? `比較対象 ${effect.previousRelease.tag}` : '比較対象なし'}
+              {effect.release.prerelease ? ' · pre-release' : ''}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {effect ? (
+        <>
+          <ReleaseEffectSignals effect={effect} />
+          <div class="effect-charts">
+            <section>
+              <div class="repo-chart-heading">
+                <h3>リリース前後の日次 installer DL</h3>
+                <span class="effect-legend">
+                  <i class="before" /> 公開前 <i /> 公開後 <i class="baseline" /> 公開前平均
+                </span>
+              </div>
+              <ReleaseEffectDailyChart effect={effect} formatter={formatter} />
+            </section>
+            <section>
+              <div class="repo-chart-heading">
+                <h3>起動時 update check（latest.json）</h3>
+                <span class="effect-legend">
+                  <i class="activity" /> 日次
+                </span>
+              </div>
+              <ReleaseEffectActivityChart effect={effect} formatter={formatter} />
+            </section>
+          </div>
+          {effect.elapsedDays > effect.day ? (
+            <p class="panel-description">
+              {`公開から ${effect.elapsedDays} 日経過しています。評価は公開後 ${EVALUATION_WINDOW_DAYS} 日（${formatter.date(effect.evaluatedDate)}）までを対象にしています。`}
+            </p>
+          ) : null}
+          {effect.releaseLift.baselineIncludesRelease ? (
+            <p class="panel-description">
+              {`公開前 ${BASELINE_DAYS} 日間に別のリリースが含まれるため、通常ペースが高めに出ている可能性があります。`}
+            </p>
+          ) : null}
+          <p class="panel-description">
+            ダウンロード数はユニークユーザー数ではありません。利用活動シグナルはアプリ起動時の更新チェック数を用いた
+            proxy で、稼働ユーザー数や継続率を測定するものではありません。このパネルは installer
+            のみを集計し、集計対象（scope）設定の影響を受けません。
+          </p>
+        </>
+      ) : (
+        <div class="chart-empty">比較できるリリースがまだありません</div>
+      )}
     </section>
   )
 }
@@ -430,25 +626,25 @@ export function DashboardPage({
           <section class="panel update-health-panel">
             <div class="panel-header">
               <div>
-                <p class="panel-kicker">Acquisition &amp; retention proxy</p>
-                <h2>新規 vs 更新</h2>
+                <p class="panel-kicker">Distribution activity</p>
+                <h2>配布アクティビティ</h2>
               </div>
               <div class="update-health-legend">
                 <span>
                   <i class="installer" /> installer
                 </span>
                 <span>
-                  <i class="updater" /> updater
+                  <i class="updater" /> updater bundle
                 </span>
               </div>
             </div>
             <div class="update-health-totals">
               <div>
-                <span>installer 期間合計</span>
+                <span>installer 取得数（期間合計）</span>
                 <strong>{formatNumber(data.updateHealth.installer.periodDownloads)}</strong>
               </div>
               <div>
-                <span>updater 期間合計</span>
+                <span>updater bundle 取得数（期間合計）</span>
                 <strong>{formatNumber(data.updateHealth.updater.periodDownloads)}</strong>
               </div>
             </div>
@@ -458,10 +654,14 @@ export function DashboardPage({
               formatter={formatter}
             />
             <p class="panel-description">
-              updater
-              は自動更新クライアントの取得数で、稼働中インストール数の近似になります。このパネルは集計対象（scope）設定の影響を受けません。
+              installer と updater bundle
+              （自動更新用の配布ファイル）の取得数を、ファイル種別ごとに比べています。どちらも配布ファイルの取得数であり、installer
+              は新規ユーザー数、updater bundle
+              は稼働中ユーザー数や継続率を直接表すものではありません。起動時の更新チェックは「リリース効果」の利用活動シグナルを参照してください。このパネルは集計対象（scope）設定の影響を受けません。
             </p>
           </section>
+
+          <ReleaseEffectPanel effect={data.releaseEffect} formatter={formatter} />
 
           <section class="panel adoption-panel">
             <div class="panel-header">

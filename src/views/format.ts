@@ -17,6 +17,13 @@ export function formatDecimal(value: number): string {
   return decimalFormatter.format(value)
 }
 
+/** Prefixes positive values with "+"; negative values already carry their sign. */
+export function formatSigned(value: number, maximumFractionDigits = 1): string {
+  const normalized = value === 0 ? 0 : value
+  const formatted = formatNumber(normalized, maximumFractionDigits)
+  return normalized > 0 ? `+${formatted}` : formatted
+}
+
 export function periodText(days: DashboardQuery['days']): string {
   return days === 365 ? '直近1年' : `直近${days}日`
 }
