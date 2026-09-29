@@ -7,6 +7,7 @@ import type {
   DashboardQuery,
   DashboardResponse,
   EmptyDashboardResponse,
+  LaunchActivity,
   ReleaseEffect,
   RepoStats,
 } from '../types'
@@ -14,6 +15,7 @@ import {
   AdoptionCurveChart,
   CumulativeChart,
   DailyChart,
+  LaunchActivityChart,
   PLATFORM_COLORS,
   PlatformBreakdown,
   PlatformTrendChart,
@@ -21,7 +23,6 @@ import {
   ReleaseEffectActivityChart,
   ReleaseEffectDailyChart,
   RepoStatsCharts,
-  UpdateHealthChart,
   WeekdayPattern,
 } from './Charts'
 import { Controls } from './Controls'
@@ -257,6 +258,61 @@ function ReleaseEffectSignals({ effect }: { effect: ReleaseEffect }) {
         hint="起動時の更新チェック（latest.json 取得）の 1 日あたり件数。ユニークユーザー数ではありません"
       />
     </div>
+  )
+}
+
+function LaunchActivityPanel({
+  activity,
+  days,
+  formatter,
+}: {
+  activity: LaunchActivity
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const hasLaunches = activity.launches.series.some((point) => point.dailyDownloads !== null)
+  return (
+    <section class="panel update-health-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Usage activity</p>
+          <h2>アクティブ起動数</h2>
+        </div>
+        <div class="update-health-legend">
+          <span>
+            <i class="installer" /> installer 取得
+          </span>
+          <span>
+            <i class="updater" /> 起動時の更新チェック
+          </span>
+        </div>
+      </div>
+      <div class="update-health-totals">
+        <div>
+          <span>更新チェック数（期間合計）</span>
+          <strong>{hasLaunches ? formatNumber(activity.launches.periodDownloads) : '—'}</strong>
+        </div>
+        <div>
+          <span>更新チェック数（1 日平均）</span>
+          <strong>
+            {activity.launchesPerDay === null ? '—' : formatDecimal(activity.launchesPerDay)}
+          </strong>
+        </div>
+        <div>
+          <span>installer 取得数（期間合計）</span>
+          <strong>{formatNumber(activity.installer.periodDownloads)}</strong>
+        </div>
+      </div>
+      <LaunchActivityChart activity={activity} days={days} formatter={formatter} />
+      <p class="panel-description">
+        {hasLaunches
+          ? 'アプリは起動のたびに latest.json を取得して更新を確認します。その取得数（起動時の更新チェック）を日次で示しています。'
+          : 'latest.json のダウンロード履歴がないため、起動時の更新チェックを表示できません。'}
+        同じ利用者の複数回の起動を含み、ユニークユーザー数や稼働ユーザー数ではありません。起動したまま再起動しない利用は数えられません。installer
+        は自動更新が取得する配布ファイル（msi、AppImage
+        など）も含むため、新規ユーザー数ではありません。このパネルは集計対象（scope）設定の影響を受けません。
+      </p>
+    </section>
   )
 }
 
@@ -623,43 +679,11 @@ export function DashboardPage({
             />
           </article>
 
-          <section class="panel update-health-panel">
-            <div class="panel-header">
-              <div>
-                <p class="panel-kicker">Distribution activity</p>
-                <h2>配布アクティビティ</h2>
-              </div>
-              <div class="update-health-legend">
-                <span>
-                  <i class="installer" /> installer
-                </span>
-                <span>
-                  <i class="updater" /> updater bundle
-                </span>
-              </div>
-            </div>
-            <div class="update-health-totals">
-              <div>
-                <span>installer 取得数（期間合計）</span>
-                <strong>{formatNumber(data.updateHealth.installer.periodDownloads)}</strong>
-              </div>
-              <div>
-                <span>updater bundle 取得数（期間合計）</span>
-                <strong>{formatNumber(data.updateHealth.updater.periodDownloads)}</strong>
-              </div>
-            </div>
-            <UpdateHealthChart
-              health={data.updateHealth}
-              days={data.meta.days}
-              formatter={formatter}
-            />
-            <p class="panel-description">
-              installer と updater bundle
-              （自動更新用の配布ファイル）の取得数を、ファイル種別ごとに比べています。どちらも配布ファイルの取得数であり、installer
-              は新規ユーザー数、updater bundle
-              は稼働中ユーザー数や継続率を直接表すものではありません。起動時の更新チェックは「リリース効果」の利用活動シグナルを参照してください。このパネルは集計対象（scope）設定の影響を受けません。
-            </p>
-          </section>
+          <LaunchActivityPanel
+            activity={data.launchActivity}
+            days={data.meta.days}
+            formatter={formatter}
+          />
 
           <ReleaseEffectPanel effect={data.releaseEffect} formatter={formatter} />
 

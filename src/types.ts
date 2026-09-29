@@ -152,14 +152,18 @@ export interface DashboardInsight {
   body: string
 }
 
-export interface UpdateHealthSeries {
+export interface ActivitySeries {
   periodDownloads: number
   series: SeriesPoint[]
 }
 
-export interface UpdateHealth {
-  installer: UpdateHealthSeries
-  updater: UpdateHealthSeries
+export interface LaunchActivity {
+  /** Installer downloads. Files the auto-updater also fetches are included, so this is not "new installs". */
+  installer: ActivitySeries
+  /** latest.json downloads: the update check the app makes at every startup. */
+  launches: ActivitySeries
+  /** Mean startup update checks per observed day, or null without an observed day. */
+  launchesPerDay: number | null
 }
 
 export interface ReleaseEffectRelease {
@@ -277,7 +281,7 @@ export interface DashboardResponse {
   adoptionCurves: AdoptionCurve[]
   releaseEffect: ReleaseEffect | null
   topAssets: AssetBreakdownItem[]
-  updateHealth: UpdateHealth
+  launchActivity: LaunchActivity
   latestVersionShare: number | null
   latestVersionTag: string | null
   latestVersionPublishedAt: string | null

@@ -4,6 +4,7 @@ import type {
   AdoptionCurve,
   BreakdownItem,
   DashboardQuery,
+  LaunchActivity,
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
@@ -14,7 +15,6 @@ import type {
   RepoTrafficPoint,
   SeriesPoint,
   TrafficSeriesKey,
-  UpdateHealth,
 } from '../types'
 import { type Formatter, formatDecimal, formatNumber, safeUrl } from './format'
 
@@ -56,16 +56,16 @@ function segmentedLinePaths(
   return segments.filter((points) => points.length > 1).map(linePath)
 }
 
-export function UpdateHealthChart({
-  health,
+export function LaunchActivityChart({
+  activity,
   days,
   formatter,
 }: {
-  health: UpdateHealth
+  activity: LaunchActivity
   days: DashboardQuery['days']
   formatter: Formatter
 }) {
-  const series = health.installer.series
+  const series = activity.installer.series
   if (!series.length) return <ChartEmpty message="表示できる日次データがありません" />
 
   const width = 900
@@ -73,7 +73,7 @@ export function UpdateHealthChart({
   const margin = { top: 16, right: 14, bottom: 36, left: 52 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
-  const values = [...health.installer.series, ...health.updater.series].map(
+  const values = [...activity.installer.series, ...activity.launches.series].map(
     (point) => point.dailyDownloads ?? 0,
   )
   const maximum = niceMaximum(Math.max(...values, 1))
@@ -90,7 +90,7 @@ export function UpdateHealthChart({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="installer と updater bundle の日次取得数の比較"
+        aria-label="installer と起動時の更新チェックの日次取得数の比較"
       >
         {Array.from({ length: 5 }, (_, index) => {
           const value = (maximum / 4) * index
@@ -109,10 +109,10 @@ export function UpdateHealthChart({
             </>
           )
         })}
-        {segmentedLinePaths(health.installer.series, x, y).map((path) => (
+        {segmentedLinePaths(activity.installer.series, x, y).map((path) => (
           <path class="update-health-line installer" d={path} />
         ))}
-        {segmentedLinePaths(health.updater.series, x, y).map((path) => (
+        {segmentedLinePaths(activity.launches.series, x, y).map((path) => (
           <path class="update-health-line updater" d={path} />
         ))}
         {labels.map((label) => (

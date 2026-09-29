@@ -4,6 +4,7 @@ import {
   buildArchitectureBreakdown,
   buildDailySeries,
   buildLatestVersionMetrics,
+  buildLaunchActivity,
   buildPeriodAnalytics,
   buildPlatformSeries,
   buildRepoStats,
@@ -433,5 +434,81 @@ describe('record calculations', () => {
         point('2026-08-21', 120, 10, true),
       ]),
     ).toBe(2)
+  })
+})
+
+describe('buildLaunchActivity', () => {
+  const row = (
+    date: string,
+    installer: number | null,
+    launches: number | null,
+  ): Parameters<typeof buildLaunchActivity>[0][number] => ({
+    date,
+    installer_assets: installer === null ? 0 : 1,
+    installer_total: installer ?? 0,
+    launch_assets: launches === null ? 0 : 1,
+    launch_total: launches ?? 0,
+  })
+
+  it('turns cumulative latest.json counts into daily startup update checks', () => {
+    const result = buildLaunchActivity(
+      [
+        row('2026-08-01', 100, 1000),
+        row('2026-08-02', 110, 1080),
+        row('2026-08-03', 125, 1200),
+        row('2026-08-04', 130, 1260),
+      ],
+      '2026-08-02',
+      '2026-08-04',
+      '2026-08-01',
+    )
+
+    expect(result.launches.series.map((entry) => entry.dailyDownloads)).toEqual([80, 120, 60])
+    expect(result.launches.periodDownloads).toBe(260)
+    expect(result.launchesPerDay).toBe(86.7)
+    expect(result.installer.periodDownloads).toBe(30)
+  })
+
+  it('keeps the total continuous when a new release starts its own latest.json', () => {
+    // The old release's latest.json stops growing; the new one appears with its
+    // first day of checks, so the sum across releases still moves forward.
+    const result = buildLaunchActivity(
+      [
+        row('2026-08-01', 10, 1000),
+        row('2026-08-02', 10, 1000 + 90),
+        row('2026-08-03', 12, 1090 + 70),
+      ],
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-01',
+    )
+
+    expect(result.launches.series.map((entry) => entry.dailyDownloads)).toEqual([90, 70])
+  })
+
+  it('never reads a missing latest.json as zero activity', () => {
+    const result = buildLaunchActivity(
+      [row('2026-08-01', 10, null), row('2026-08-02', 12, null), row('2026-08-03', 15, null)],
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-01',
+    )
+
+    expect(result.launches.series.every((entry) => entry.dailyDownloads === null)).toBe(true)
+    expect(result.launches.periodDownloads).toBe(0)
+    expect(result.launchesPerDay).toBeNull()
+    expect(result.installer.periodDownloads).toBe(5)
+  })
+
+  it('leaves a gap for a day without a snapshot instead of spreading the increase', () => {
+    const result = buildLaunchActivity(
+      [row('2026-08-01', 1, 100), row('2026-08-03', 1, 300)],
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-01',
+    )
+
+    expect(result.launches.series.map((entry) => entry.dailyDownloads)).toEqual([null, null])
+    expect(result.launches.periodDownloads).toBe(200)
   })
 })

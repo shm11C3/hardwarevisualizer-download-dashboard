@@ -353,7 +353,7 @@ export function previewDashboard(url: URL): DashboardResponse {
     totalDownloads: Math.round(point.totalDownloads * 0.62),
     dailyDownloads: point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * 0.62),
   }))
-  const updaterSeries = series.map((point) => ({
+  const launchSeries = series.map((point) => ({
     ...point,
     totalDownloads: Math.round(point.totalDownloads * 0.28),
     dailyDownloads: point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * 0.28),
@@ -413,9 +413,10 @@ export function previewDashboard(url: URL): DashboardResponse {
     adoptionCurves: adoptionCurves(),
     releaseEffect: releaseEffect(),
     topAssets: topAssets(periodDownloads),
-    updateHealth: {
+    launchActivity: {
       installer: { periodDownloads: Math.round(periodDownloads * 0.62), series: installerSeries },
-      updater: { periodDownloads: Math.round(periodDownloads * 0.28), series: updaterSeries },
+      launches: { periodDownloads: Math.round(periodDownloads * 0.28), series: launchSeries },
+      launchesPerDay: Math.round((periodDownloads * 0.28) / days),
     },
     latestVersionShare: 0.57,
     latestVersionTag: 'v1.9.2',
