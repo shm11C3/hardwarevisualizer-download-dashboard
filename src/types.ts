@@ -162,6 +162,74 @@ export interface UpdateHealth {
   updater: UpdateHealthSeries
 }
 
+export interface ReleaseEffectRelease {
+  tag: string
+  label: string
+  publishedAt: string
+  prerelease: boolean
+  url: string
+}
+
+export interface ReleaseEffectDailyPoint {
+  /** Calendar date when the daily observation interval started. */
+  date: string
+  downloads: number | null
+}
+
+export interface ReleaseEffectMarker {
+  tag: string
+  /** Interval start date the release was published on. */
+  date: string
+}
+
+/**
+ * Release-relative signals for the latest release. Every metric is a proxy
+ * built from cumulative download counts; none of them measures users. A field
+ * is null whenever the snapshots needed to compare like with like are missing.
+ */
+export interface ReleaseEffect {
+  release: ReleaseEffectRelease
+  previousRelease: ReleaseEffectRelease | null
+  /** Days from the publish date to the last evaluated snapshot, capped at the evaluation window. */
+  day: number
+  /** Days from the publish date to the latest snapshot, before the cap. */
+  elapsedDays: number
+  /** Date of the snapshot the evaluation ends on. */
+  evaluatedDate: string
+  adoptionVelocity: {
+    /** Cumulative installer downloads of the release at Day N. */
+    current: number | null
+    /** Cumulative installer downloads of the previous release at its own Day N. */
+    previous: number | null
+    changePercent: number | null
+  }
+  releaseLift: {
+    baselinePerDay: number | null
+    postPerDay: number | null
+    multiple: number | null
+    /** True when another release fell inside the baseline window and may inflate it. */
+    baselineIncludesRelease: boolean
+  }
+  incrementalDownloads: {
+    expected: number | null
+    actual: number | null
+    incremental: number | null
+  }
+  usageActivity: {
+    /** Elapsed days both releases are compared over; shorter than `day` when the releases are close together. */
+    comparedDays: number | null
+    currentPerDay: number | null
+    previousPerDay: number | null
+    changePercent: number | null
+  }
+  /** Installer downloads per day from the baseline window through the evaluation end. */
+  dailySeries: ReleaseEffectDailyPoint[]
+  baselineStartDate: string
+  /** latest.json downloads per day across releases, from the previous release onward. */
+  activitySeries: ReleaseEffectDailyPoint[]
+  markers: ReleaseEffectMarker[]
+}
+
 export interface CollectionRunSummary {
   startedAt: string
   finishedAt: string | null
@@ -207,6 +275,7 @@ export interface DashboardResponse {
   architectureBreakdown: BreakdownItem[]
   releaseBreakdown: ReleaseBreakdownItem[]
   adoptionCurves: AdoptionCurve[]
+  releaseEffect: ReleaseEffect | null
   topAssets: AssetBreakdownItem[]
   updateHealth: UpdateHealth
   latestVersionShare: number | null

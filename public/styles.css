@@ -1851,3 +1851,205 @@ tbody tr:hover td {
     min-width: 560px;
   }
 }
+
+/* Release effect panel. */
+.release-effect-panel {
+  margin-bottom: 14px;
+  padding: 25px;
+}
+
+.effect-release-tag {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  text-align: right;
+}
+
+.effect-release-tag strong {
+  color: var(--primary-bright);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.effect-release-tag span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.effect-signals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0 22px;
+}
+
+.effect-signal {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.effect-signal-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.effect-signal-value {
+  margin-top: 14px;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.effect-signal-value.positive {
+  color: var(--secondary);
+}
+
+.effect-signal-value.negative {
+  color: var(--negative);
+}
+
+.effect-signal-note,
+.effect-signal-hint {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.effect-signal-note {
+  margin-bottom: 12px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.effect-signal-hint {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.effect-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.effect-charts > section {
+  min-width: 0;
+}
+
+.effect-charts .repo-chart-heading {
+  flex-wrap: wrap;
+}
+
+.effect-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.effect-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--primary);
+}
+
+.effect-legend i.before {
+  background: rgba(151, 167, 196, 0.4);
+}
+
+.effect-legend i.baseline {
+  height: 0;
+  border-top: 2px dashed #c39cff;
+  border-radius: 0;
+  background: none;
+}
+
+.effect-legend i.activity {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--secondary);
+}
+
+.effect-legend i:not(:first-child) {
+  margin-left: 6px;
+}
+
+.effect-chart-frame {
+  min-width: 0;
+}
+
+.effect-chart-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.effect-bar {
+  fill: var(--primary);
+  transition: opacity 120ms ease;
+}
+
+.effect-bar.before {
+  fill: rgba(151, 167, 196, 0.4);
+}
+
+.effect-bar:hover {
+  opacity: 0.76;
+}
+
+.effect-baseline {
+  stroke: #c39cff;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+  stroke-width: 1.6;
+}
+
+.effect-activity-point {
+  fill: var(--surface-solid);
+  stroke: var(--secondary);
+  stroke-width: 1.6;
+}
+
+@media (max-width: 1120px) {
+  .effect-signals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .effect-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .release-effect-panel {
+    padding: 20px 17px;
+  }
+
+  .effect-signals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .effect-chart-frame {
+    overflow-x: auto;
+  }
+
+  .effect-chart-frame svg {
+    min-width: 440px;
+  }
+}

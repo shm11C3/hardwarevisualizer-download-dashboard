@@ -11,13 +11,20 @@ import type {
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
+  ReleaseEffect,
   ReleaseEvent,
   RepoStats,
   SeriesPoint,
   UpdateHealth,
 } from '../types'
-import { architectureLabel, platformLabel } from './assets'
+import { architectureLabel, platformLabel, UPDATE_MANIFEST_ASSET_NAME } from './assets'
 import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './date'
+import {
+  buildReleaseEffect,
+  planReleaseEffect,
+  type ReleaseEffectPlan,
+  type TagTotalRow,
+} from './release-effect'
 
 export interface DailyTotalRow {
   date: string
@@ -110,6 +117,14 @@ interface KindDailyRow {
   date: string
   installer_total: number
   updater_total: number
+}
+
+interface ReleaseEffectTotalsRow {
+  date: string
+  installer_assets: number
+  installer_total: number
+  update_check_assets: number
+  update_check_total: number
 }
 
 interface ReleaseEventResultRow {
@@ -707,20 +722,8 @@ function releaseEventsStatement(database: DbReader): D1PreparedStatement {
   )
 }
 
-function mapReleaseEvents(
-  result: D1Result<ReleaseEventResultRow>,
-  startDate: string,
-  endDate: string,
-  timeZone: string,
-  channel: DashboardQuery['channel'],
-): ReleaseEvent[] {
-  return selectReleaseEvents(
-    (result.results ?? []).map((row) => ({ ...row, prerelease: Boolean(row.prerelease) })),
-    startDate,
-    endDate,
-    timeZone,
-    channel,
-  )
+function mapReleaseRows(result: D1Result<ReleaseEventResultRow>): ReleaseEventRow[] {
+  return (result.results ?? []).map((row) => ({ ...row, prerelease: Boolean(row.prerelease) }))
 }
 
 function updateHealthStatement(
@@ -778,6 +781,93 @@ function mapUpdateHealth(
       series: buildDailySeries(updaterRows, startDate, endDate),
     },
   }
+}
+
+// Installer downloads and latest.json downloads per snapshot date across every
+// release. The asset counts tell a date with no such asset apart from a real
+// zero, so a missing latest.json never reads as "no activity". Scope is fixed on
+// purpose: the scope filter would otherwise mix update checks into installer
+// downloads.
+function releaseEffectTotalsStatement(
+  database: DbReader,
+  query: DashboardQuery,
+  fromDate: string,
+): D1PreparedStatement {
+  const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
+  return database
+    .prepare(
+      `
+        SELECT
+          s.snapshot_date AS date,
+          SUM(CASE WHEN a.kind = 'installer' THEN 1 ELSE 0 END) AS installer_assets,
+          SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS installer_total,
+          SUM(CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN 1 ELSE 0 END)
+            AS update_check_assets,
+          SUM(
+            CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN s.download_count ELSE 0 END
+          ) AS update_check_total
+        FROM snapshots s
+        INNER JOIN assets a ON a.id = s.asset_id
+        INNER JOIN releases r ON r.id = a.release_id
+        WHERE r.draft = 0
+          ${channelClause}
+          AND (a.kind = 'installer' OR LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}')
+          AND s.snapshot_date >= ?
+        GROUP BY s.snapshot_date
+        ORDER BY s.snapshot_date ASC
+      `,
+    )
+    .bind(fromDate)
+}
+
+// Not bounded by date: a release's first snapshot decides whether its count
+// started at publish, and a clipped range would hide an older first snapshot.
+// Two releases keep this small.
+function releaseEffectTagTotalsStatement(
+  database: DbReader,
+  query: DashboardQuery,
+  plan: ReleaseEffectPlan,
+): D1PreparedStatement {
+  const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
+  return database
+    .prepare(
+      `
+        SELECT r.tag_name AS tag, s.snapshot_date AS date, SUM(s.download_count) AS total
+        FROM snapshots s
+        INNER JOIN assets a ON a.id = s.asset_id
+        INNER JOIN releases r ON r.id = a.release_id
+        WHERE r.draft = 0
+          ${channelClause}
+          AND a.kind = 'installer'
+          AND r.tag_name IN (?, ?)
+        GROUP BY r.tag_name, s.snapshot_date
+        ORDER BY s.snapshot_date ASC
+      `,
+    )
+    .bind(plan.release.tag, plan.previous?.tag ?? plan.release.tag)
+}
+
+function mapReleaseEffect(
+  plan: ReleaseEffectPlan,
+  trackingSince: string,
+  totals: D1Result<ReleaseEffectTotalsRow>,
+  tagTotals: D1Result<TagTotalRow>,
+): ReleaseEffect {
+  const rows = totals.results ?? []
+  return buildReleaseEffect(plan, {
+    trackingSince,
+    installerTotals: rows
+      .filter((row) => numberValue(row.installer_assets) > 0)
+      .map((row) => ({ date: row.date, total: numberValue(row.installer_total) })),
+    updateCheckTotals: rows
+      .filter((row) => numberValue(row.update_check_assets) > 0)
+      .map((row) => ({ date: row.date, total: numberValue(row.update_check_total) })),
+    tagTotals: (tagTotals.results ?? []).map((row) => ({
+      tag: row.tag,
+      date: row.date,
+      total: numberValue(row.total),
+    })),
+  })
 }
 
 function latestVersionRowsStatement(
@@ -1267,16 +1357,20 @@ export async function getDashboard(
   const timeZone = env.TIME_ZONE ?? 'Asia/Tokyo'
   const generatedAt = new Date().toISOString()
   const session = env.DB.withSession('first-unconstrained')
-  const [collectionBatchResult, totalsBatchResult] = await session.batch([
+  const [collectionBatchResult, totalsBatchResult, releasesBatchResult] = await session.batch([
     lastCollectionStatement(session),
     dailyTotalsStatement(session, query),
+    releaseEventsStatement(session),
   ])
   const collection = mapLastCollection(requireBatchResult<RunRow>(collectionBatchResult, 0))
   const totals = mapDailyTotals(requireBatchResult<DailyTotalRow>(totalsBatchResult, 1))
+  const releaseRows = mapReleaseRows(
+    requireBatchResult<ReleaseEventResultRow>(releasesBatchResult, 2),
+  )
   const analytics = buildPeriodAnalytics(totals, query.days)
 
   if (!analytics) {
-    logSessionRouting('dashboard', [collectionBatchResult, totalsBatchResult])
+    logSessionRouting('dashboard', [collectionBatchResult, totalsBatchResult, releasesBatchResult])
     return {
       status: 'empty',
       meta: {
@@ -1294,6 +1388,12 @@ export async function getDashboard(
     }
   }
 
+  const effectPlan = planReleaseEffect(
+    releaseRows,
+    query.channel,
+    timeZone,
+    analytics.latestSnapshotDate,
+  )
   const results = await session.batch([
     platformBreakdownStatement(
       session,
@@ -1325,7 +1425,6 @@ export async function getDashboard(
       analytics.effectiveBaselineDate,
       analytics.latestSnapshotDate,
     ),
-    releaseEventsStatement(session),
     updateHealthStatement(
       session,
       query,
@@ -1340,8 +1439,19 @@ export async function getDashboard(
     ),
     adoptionCurveRowsStatement(session, query),
     repositoryStatsStatement(session, analytics.latestSnapshotDate),
+    ...(effectPlan
+      ? [
+          releaseEffectTotalsStatement(session, query, effectPlan.fetchFrom),
+          releaseEffectTagTotalsStatement(session, query, effectPlan),
+        ]
+      : []),
   ])
-  logSessionRouting('dashboard', [collectionBatchResult, totalsBatchResult, ...results])
+  logSessionRouting('dashboard', [
+    collectionBatchResult,
+    totalsBatchResult,
+    releasesBatchResult,
+    ...results,
+  ])
   const platforms = mapPlatformBreakdown(
     requireBatchResult<PlatformRow>(results[0], 0),
     analytics.periodDownloads,
@@ -1363,29 +1473,37 @@ export async function getDashboard(
     analytics.totalDownloads,
   )
   const platformRows = mapPlatformTotals(requireBatchResult<PlatformTotalRow>(results[4], 4))
-  const events = mapReleaseEvents(
-    requireBatchResult<ReleaseEventResultRow>(results[5], 5),
+  const events = selectReleaseEvents(
+    releaseRows,
     analytics.series[0]?.intervalStartDate ?? addDays(analytics.latestSnapshotDate, -1),
     analytics.series.at(-1)?.intervalStartDate ?? addDays(analytics.latestSnapshotDate, -1),
     timeZone,
     query.channel,
   )
   const health = mapUpdateHealth(
-    requireBatchResult<KindDailyRow>(results[6], 6),
+    requireBatchResult<KindDailyRow>(results[5], 5),
     analytics.series[0]?.date ?? analytics.requestedStartDate,
     analytics.latestSnapshotDate,
     analytics.effectiveBaselineDate,
   )
-  const versionRows = mapLatestVersionRows(requireBatchResult<LatestVersionRow>(results[7], 7))
-  const adoptionRows = mapAdoptionCurveRows(requireBatchResult<AdoptionCurveRow>(results[8], 8))
+  const versionRows = mapLatestVersionRows(requireBatchResult<LatestVersionRow>(results[6], 6))
+  const adoptionRows = mapAdoptionCurveRows(requireBatchResult<AdoptionCurveRow>(results[7], 7))
   // Stars and traffic can predate download tracking, so use the requested
   // window start rather than the download series' clamped start.
   const repoStats = mapRepositoryStats(
-    requireBatchResult<RepoStatRow>(results[9], 9),
+    requireBatchResult<RepoStatRow>(results[8], 8),
     analytics.requestedStartDate,
     analytics.latestSnapshotDate,
   )
   const latestVersion = buildLatestVersionMetrics(versionRows, analytics.periodDownloads)
+  const releaseEffect = effectPlan
+    ? mapReleaseEffect(
+        effectPlan,
+        analytics.trackingSince,
+        requireBatchResult<ReleaseEffectTotalsRow>(results[9], 9),
+        requireBatchResult<TagTotalRow>(results[10], 10),
+      )
+    : null
 
   return {
     status: 'ok',
@@ -1427,6 +1545,7 @@ export async function getDashboard(
     architectureBreakdown: architectures,
     releaseBreakdown: releases,
     adoptionCurves: buildAdoptionCurves(adoptionRows, analytics.trackingSince, timeZone),
+    releaseEffect,
     topAssets: assets,
     updateHealth: health,
     ...latestVersion,

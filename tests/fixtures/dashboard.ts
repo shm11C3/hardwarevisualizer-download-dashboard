@@ -11,6 +11,8 @@ import type {
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
+  ReleaseEffect,
+  ReleaseEffectDailyPoint,
   RepoStats,
   SeriesPoint,
 } from '../../src/types'
@@ -133,6 +135,67 @@ function adoptionCurves(): AdoptionCurve[] {
       downloads: Math.round((releaseIndex + 1) * 6 + day * (52 - releaseIndex * 11)),
     })),
   }))
+}
+
+function effectSeries(
+  startDate: string,
+  endDate: string,
+  value: (index: number, date: string) => number,
+): ReleaseEffectDailyPoint[] {
+  const length = Math.round((Date.parse(endDate) - Date.parse(startDate)) / ONE_DAY)
+  return Array.from({ length }, (_, index) => {
+    const date = addDays(startDate, index)
+    return { date, downloads: value(index, date) }
+  })
+}
+
+// Day 30 of the newest release: the evaluation window is capped, so this also
+// exercises the "released N days ago" caption.
+function releaseEffect(): ReleaseEffect {
+  const [release, previous] = RELEASES
+  if (!release || !previous) throw new Error('preview fixture needs two releases')
+  const releaseDate = release.publishedAt.slice(0, 10)
+  const previousDate = previous.publishedAt.slice(0, 10)
+  const evaluatedDate = addDays(releaseDate, 30)
+  const baselineStartDate = addDays(releaseDate, -7)
+  const asRelease = (item: (typeof RELEASES)[number]) => ({
+    tag: item.tag,
+    label: `HardwareVisualizer ${item.tag}`,
+    publishedAt: item.publishedAt,
+    prerelease: false,
+    url: `https://github.com/shm11C3/HardwareVisualizer/releases/tag/${item.tag}`,
+  })
+
+  return {
+    release: asRelease(release),
+    previousRelease: asRelease(previous),
+    day: 30,
+    elapsedDays: 32,
+    evaluatedDate,
+    adoptionVelocity: { current: 1_820, previous: 1_386, changePercent: 31.3 },
+    releaseLift: {
+      baselinePerDay: 42,
+      postPerDay: 90.5,
+      multiple: 2.15,
+      baselineIncludesRelease: false,
+    },
+    incrementalDownloads: { expected: 1_260, actual: 2_715, incremental: 1_455 },
+    usageActivity: {
+      comparedDays: 24,
+      currentPerDay: 126.4,
+      previousPerDay: 101.2,
+      changePercent: 24.9,
+    },
+    dailySeries: effectSeries(baselineStartDate, evaluatedDate, (index) =>
+      index < 7 ? 38 + (index % 3) * 4 : Math.max(30, 190 - (index - 7) * 6),
+    ),
+    baselineStartDate,
+    activitySeries: effectSeries(previousDate, evaluatedDate, (index) => 96 + (index % 7) * 5),
+    markers: [
+      { tag: release.tag, date: releaseDate },
+      { tag: previous.tag, date: previousDate },
+    ],
+  }
 }
 
 const ASSETS: {
@@ -348,6 +411,7 @@ export function previewDashboard(url: URL): DashboardResponse {
     architectureBreakdown: architectureBreakdown(periodDownloads),
     releaseBreakdown: releases,
     adoptionCurves: adoptionCurves(),
+    releaseEffect: releaseEffect(),
     topAssets: topAssets(periodDownloads),
     updateHealth: {
       installer: { periodDownloads: Math.round(periodDownloads * 0.62), series: installerSeries },

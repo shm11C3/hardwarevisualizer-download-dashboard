@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { coerceDashboardQuery, dashboardHref, parseDashboardQuery } from '../src/lib/query'
-import type { AssetBreakdownItem, DashboardQuery, DashboardResponse } from '../src/types'
+import type {
+  AssetBreakdownItem,
+  DashboardQuery,
+  DashboardResponse,
+  ReleaseEffect,
+} from '../src/types'
 import { DashboardPage } from '../src/views/DashboardPage'
 import { createFormatter } from '../src/views/format'
 import { previewDashboard } from './fixtures/dashboard'
@@ -99,7 +104,8 @@ describe('DashboardPage', () => {
     expect(html).not.toContain('<script')
     expect(html).toContain('アーキテクチャ別')
     expect(html).toContain('aria-label="アーキテクチャ別ダウンロード構成"')
-    expect(html).toContain('新規 vs 更新')
+    expect(html).toContain('配布アクティビティ')
+    expect(html).not.toContain('新規 vs 更新')
     expect(html).toContain('最新バージョン比率')
     expect(html).toContain('scope）設定の影響を受けません')
     expect(html).toContain('リリース採用曲線')
@@ -134,6 +140,163 @@ describe('DashboardPage', () => {
     expect(html).toContain('aria-label="スター増分の日次推移"')
     expect(html).toContain('トラフィックは GITHUB_TOKEN に push 権限が必要です')
     expect(html).not.toContain('aria-label="views と clones の日次推移"')
+  })
+
+  it('renders the release effect between the distribution and adoption panels', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render(data)
+
+    expect(html).toContain('Growth signals')
+    expect(html).toContain('リリース効果')
+    expect(html).toContain('v1.9.2 · Day 30')
+    expect(html).toContain('比較対象 v1.9.1')
+    for (const label of ['採用速度', 'Release Lift', 'Incremental Downloads', '利用活動シグナル']) {
+      expect(html).toContain(label)
+    }
+    expect(html).toContain('+31.3%')
+    expect(html).toContain('2.2x')
+    expect(html).toContain('+1,455')
+    expect(html).toContain('+24.9%')
+    expect(html).toContain(
+      'aria-label="リリース前後の日次 installer ダウンロードと公開前ベースライン"',
+    )
+    expect(html).toContain('aria-label="latest.json の日次ダウンロード推移"')
+    expect(html).toContain('公開から 32 日経過しています')
+    expect(html.indexOf('配布アクティビティ')).toBeLessThan(html.indexOf('リリース効果'))
+    expect(html.indexOf('リリース効果')).toBeLessThan(html.indexOf('リリース採用曲線'))
+  })
+
+  it('states that the signals are proxies and not user counts', async () => {
+    const html = await render(previewDashboard(new URL('https://example.com/')))
+
+    expect(html).toContain('ダウンロード数はユニークユーザー数ではありません')
+    expect(html).toContain('アプリ起動時の更新チェック数を用いた')
+    expect(html).toContain('新規ユーザー数ではありません')
+    expect(html).toContain('ユニークユーザー数ではありません')
+    // Nothing on the page may present these as measured values.
+    expect(html).not.toMatch(/DAU|MAU|retention|Acquisition/)
+    expect(html).not.toContain('新規獲得')
+    expect(html).not.toContain('稼働中インストール数の近似')
+  })
+
+  it('no longer reads the distribution panel as new versus returning users', async () => {
+    const html = await render(previewDashboard(new URL('https://example.com/')))
+
+    expect(html).toContain('Distribution activity')
+    expect(html).toContain('updater bundle')
+    expect(html).toContain('稼働中ユーザー数や継続率を直接表すものではありません')
+  })
+
+  it('shows a dash and the reason when a signal cannot be compared', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const effect: ReleaseEffect = {
+      ...(data.releaseEffect as ReleaseEffect),
+      previousRelease: null,
+      day: 0,
+      elapsedDays: 0,
+      adoptionVelocity: { current: null, previous: null, changePercent: null },
+      releaseLift: {
+        baselinePerDay: null,
+        postPerDay: null,
+        multiple: null,
+        baselineIncludesRelease: false,
+      },
+      incrementalDownloads: { expected: null, actual: null, incremental: null },
+      usageActivity: {
+        comparedDays: null,
+        currentPerDay: null,
+        previousPerDay: null,
+        changePercent: null,
+      },
+      dailySeries: [],
+      activitySeries: [],
+    }
+    const html = await render({ ...data, releaseEffect: effect })
+
+    expect(html).toContain('v1.9.2 · Day 0')
+    expect(html).toContain('比較対象なし')
+    expect(html).toContain('公開直後のため、比較できるスナップショットがまだありません')
+    expect(html).toContain('latest.json のダウンロード履歴がありません')
+    expect(html).toContain('リリース前後の日次データがまだありません')
+    expect(html).toContain('latest.json の日次取得数を表示できません')
+    expect(html.match(/class="effect-signal-value">—</g)).toHaveLength(4)
+    expect(html).not.toContain('公開から')
+  })
+
+  it('explains why a lift cannot be computed from a zero baseline', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const base = data.releaseEffect as ReleaseEffect
+    const html = await render({
+      ...data,
+      releaseEffect: {
+        ...base,
+        releaseLift: {
+          baselinePerDay: 0,
+          postPerDay: 90,
+          multiple: null,
+          baselineIncludesRelease: true,
+        },
+        usageActivity: {
+          comparedDays: 30,
+          currentPerDay: 120,
+          previousPerDay: 0,
+          changePercent: null,
+        },
+        release: { ...base.release, prerelease: true },
+      },
+    })
+
+    expect(html).toContain('公開前 7 日平均が 0 件のため、倍率を出せません')
+    expect(html).toContain('公開前 7 日間に別のリリースが含まれる')
+    expect(html).toContain('の同期間が 0 件/日のため、割合を出せません')
+    expect(html).toContain('pre-release')
+  })
+
+  it('names the shared days when update checks are compared over a shorter period', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const base = data.releaseEffect as ReleaseEffect
+    const html = await render({
+      ...data,
+      releaseEffect: {
+        ...base,
+        usageActivity: {
+          comparedDays: 12,
+          currentPerDay: 120,
+          previousPerDay: 100,
+          changePercent: 20,
+        },
+      },
+    })
+
+    expect(html).toContain('120 件/日 / v1.9.1 100 件/日（公開後 12 日間）')
+    expect(html).toContain('+20%')
+  })
+
+  it('marks a slower release as negative', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const base = data.releaseEffect as ReleaseEffect
+    const html = await render({
+      ...data,
+      releaseEffect: {
+        ...base,
+        adoptionVelocity: { current: 100, previous: 200, changePercent: -50 },
+        releaseLift: { ...base.releaseLift, multiple: 0.7 },
+        incrementalDownloads: { expected: 126, actual: 90, incremental: -36 },
+      },
+    })
+
+    expect(html).toContain('effect-signal-value negative">-50%<')
+    expect(html).toContain('effect-signal-value negative">0.7x<')
+    expect(html).toContain('effect-signal-value negative">-36<')
+  })
+
+  it('renders an empty release effect panel without a release', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({ ...data, releaseEffect: null })
+
+    expect(html).toContain('リリース効果')
+    expect(html).toContain('比較できるリリースがまだありません')
+    expect(html).not.toContain('effect-signal-value')
   })
 
   it('renders the adoption-curve empty state when no releases are comparable', async () => {

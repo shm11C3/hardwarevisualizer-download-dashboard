@@ -7,6 +7,8 @@ import type {
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
+  ReleaseEffect,
+  ReleaseEffectDailyPoint,
   ReleaseEvent,
   RepoStats,
   RepoTrafficPoint,
@@ -88,7 +90,7 @@ export function UpdateHealthChart({
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="installer と updater の日次比較"
+        aria-label="installer と updater bundle の日次取得数の比較"
       >
         {Array.from({ length: 5 }, (_, index) => {
           const value = (maximum / 4) * index
@@ -397,6 +399,209 @@ export function RepoStatsCharts({
           />
         </section>
       ) : null}
+    </div>
+  )
+}
+
+const EFFECT_WIDTH = 520
+const EFFECT_HEIGHT = 240
+const EFFECT_MARGIN = { top: 22, right: 12, bottom: 34, left: 44 }
+
+function effectLabels(series: ReleaseEffectDailyPoint[], x: (index: number) => number) {
+  const labelCount = Math.min(5, series.length)
+  return Array.from({ length: labelCount }, (_, index) => {
+    const dataIndex = Math.round((index * (series.length - 1)) / Math.max(labelCount - 1, 1))
+    return { date: series[dataIndex]?.date, x: x(dataIndex) }
+  })
+}
+
+/** Installer downloads per day around the release, against the pre-release pace. */
+export function ReleaseEffectDailyChart({
+  effect,
+  formatter,
+}: {
+  effect: ReleaseEffect
+  formatter: Formatter
+}) {
+  const series = effect.dailySeries
+  if (!series.some((point) => point.downloads !== null)) {
+    return <ChartEmpty message="リリース前後の日次データがまだありません" />
+  }
+
+  const { top, right, bottom, left } = EFFECT_MARGIN
+  const innerWidth = EFFECT_WIDTH - left - right
+  const innerHeight = EFFECT_HEIGHT - top - bottom
+  const baseline = effect.releaseLift.baselinePerDay
+  const maximum = niceMaximum(
+    Math.max(...series.map((point) => point.downloads ?? 0), baseline ?? 0, 1),
+  )
+  const step = innerWidth / series.length
+  const barWidth = Math.max(2, Math.min(16, step * 0.62))
+  const x = (index: number) => left + index * step + step / 2
+  const y = (value: number) => top + innerHeight - (value / maximum) * innerHeight
+  const publishedDate = effect.markers[0]?.date
+  const publishedIndex = series.findIndex((point) => point.date === publishedDate)
+
+  return (
+    <div class="effect-chart-frame">
+      <svg
+        viewBox={`0 0 ${EFFECT_WIDTH} ${EFFECT_HEIGHT}`}
+        role="img"
+        aria-label="リリース前後の日次 installer ダウンロードと公開前ベースライン"
+      >
+        {Array.from({ length: 5 }, (_, index) => {
+          const value = (maximum / 4) * index
+          return (
+            <>
+              <line
+                class="chart-grid-line"
+                x1={left}
+                x2={EFFECT_WIDTH - right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text class="chart-axis-text" x={left - 8} y={y(value) + 3} text-anchor="end">
+                {formatNumber(value)}
+              </text>
+            </>
+          )
+        })}
+        {series.map((point, index) => {
+          if (point.downloads === null) return null
+          const barHeight = Math.max(
+            point.downloads > 0 ? 1.5 : 0,
+            (point.downloads / maximum) * innerHeight,
+          )
+          return (
+            <rect
+              class={
+                publishedIndex >= 0 && index >= publishedIndex ? 'effect-bar' : 'effect-bar before'
+              }
+              x={(x(index) - barWidth / 2).toFixed(2)}
+              y={(top + innerHeight - barHeight).toFixed(2)}
+              width={barWidth.toFixed(2)}
+              height={barHeight.toFixed(2)}
+              rx="2.5"
+            >
+              <title>{`${point.date}: ${formatNumber(point.downloads)} 件`}</title>
+            </rect>
+          )
+        })}
+        {baseline === null ? null : (
+          <line
+            class="effect-baseline"
+            x1={left}
+            x2={EFFECT_WIDTH - right}
+            y1={y(baseline)}
+            y2={y(baseline)}
+          >
+            <title>{`公開前の平均: ${formatDecimal(baseline)} 件/日`}</title>
+          </line>
+        )}
+        {publishedIndex < 0 ? null : (
+          <g class="release-marker">
+            <line x1={x(publishedIndex)} x2={x(publishedIndex)} y1={top} y2={top + innerHeight} />
+            <circle cx={x(publishedIndex)} cy={top - 6} r="4">
+              <title>{effect.release.tag}</title>
+            </circle>
+          </g>
+        )}
+        {effectLabels(series, x).map((label) => (
+          <text class="chart-axis-text" x={label.x} y={EFFECT_HEIGHT - 8} text-anchor="middle">
+            {formatter.chartLabel(label.date, false)}
+          </text>
+        ))}
+      </svg>
+    </div>
+  )
+}
+
+/** latest.json downloads per day, which continue across releases as one series. */
+export function ReleaseEffectActivityChart({
+  effect,
+  formatter,
+}: {
+  effect: ReleaseEffect
+  formatter: Formatter
+}) {
+  const series = effect.activitySeries
+  if (!series.some((point) => point.downloads !== null)) {
+    return <ChartEmpty message="latest.json の日次取得数を表示できません" />
+  }
+
+  const { top, right, bottom, left } = EFFECT_MARGIN
+  const innerWidth = EFFECT_WIDTH - left - right
+  const innerHeight = EFFECT_HEIGHT - top - bottom
+  const maximum = niceMaximum(Math.max(...series.map((point) => point.downloads ?? 0), 1))
+  const x = (index: number) => left + (index / Math.max(series.length - 1, 1)) * innerWidth
+  const y = (value: number) => top + innerHeight - (value / maximum) * innerHeight
+
+  const segments: Point[][] = []
+  let segment: Point[] = []
+  series.forEach((point, index) => {
+    if (point.downloads === null) {
+      if (segment.length) segments.push(segment)
+      segment = []
+      return
+    }
+    segment.push({ x: x(index), y: y(point.downloads) })
+  })
+  if (segment.length) segments.push(segment)
+
+  return (
+    <div class="effect-chart-frame">
+      <svg
+        viewBox={`0 0 ${EFFECT_WIDTH} ${EFFECT_HEIGHT}`}
+        role="img"
+        aria-label="latest.json の日次ダウンロード推移"
+      >
+        {Array.from({ length: 5 }, (_, index) => {
+          const value = (maximum / 4) * index
+          return (
+            <>
+              <line
+                class="chart-grid-line"
+                x1={left}
+                x2={EFFECT_WIDTH - right}
+                y1={y(value)}
+                y2={y(value)}
+              />
+              <text class="chart-axis-text" x={left - 8} y={y(value) + 3} text-anchor="end">
+                {formatNumber(value)}
+              </text>
+            </>
+          )
+        })}
+        {effect.markers.map((marker) => {
+          const index = series.findIndex((point) => point.date === marker.date)
+          if (index < 0) return null
+          return (
+            <g class="release-marker">
+              <line x1={x(index)} x2={x(index)} y1={top} y2={top + innerHeight} />
+              <circle cx={x(index)} cy={top - 6} r="4">
+                <title>{marker.tag}</title>
+              </circle>
+            </g>
+          )
+        })}
+        {segments
+          .filter((points) => points.length > 1)
+          .map((points) => (
+            <path class="update-health-line updater" d={linePath(points)} />
+          ))}
+        {series.map((point, index) =>
+          point.downloads === null ? null : (
+            <circle class="effect-activity-point" cx={x(index)} cy={y(point.downloads)} r="2.4">
+              <title>{`${point.date}: ${formatNumber(point.downloads)} 件`}</title>
+            </circle>
+          ),
+        )}
+        {effectLabels(series, x).map((label) => (
+          <text class="chart-axis-text" x={label.x} y={EFFECT_HEIGHT - 8} text-anchor="middle">
+            {formatter.chartLabel(label.date, false)}
+          </text>
+        ))}
+      </svg>
     </div>
   )
 }
