@@ -104,7 +104,7 @@ describe('DashboardPage', () => {
     expect(html).not.toContain('<script')
     expect(html).toContain('アーキテクチャ別')
     expect(html).toContain('aria-label="アーキテクチャ別ダウンロード構成"')
-    expect(html).toContain('配布アクティビティ')
+    expect(html).toContain('アクティブ起動数')
     expect(html).not.toContain('新規 vs 更新')
     expect(html).toContain('最新バージョン比率')
     expect(html).toContain('scope）設定の影響を受けません')
@@ -162,7 +162,7 @@ describe('DashboardPage', () => {
     )
     expect(html).toContain('aria-label="latest.json の日次ダウンロード推移"')
     expect(html).toContain('公開から 32 日経過しています')
-    expect(html.indexOf('配布アクティビティ')).toBeLessThan(html.indexOf('リリース効果'))
+    expect(html.indexOf('アクティブ起動数')).toBeLessThan(html.indexOf('リリース効果'))
     expect(html.indexOf('リリース効果')).toBeLessThan(html.indexOf('リリース採用曲線'))
   })
 
@@ -179,12 +179,39 @@ describe('DashboardPage', () => {
     expect(html).not.toContain('稼働中インストール数の近似')
   })
 
-  it('no longer reads the distribution panel as new versus returning users', async () => {
+  it('reads the activity panel as startup update checks, not users or new installs', async () => {
     const html = await render(previewDashboard(new URL('https://example.com/')))
 
-    expect(html).toContain('Distribution activity')
-    expect(html).toContain('updater bundle')
-    expect(html).toContain('稼働中ユーザー数や継続率を直接表すものではありません')
+    expect(html).toContain('Usage activity')
+    expect(html).toContain('アクティブ起動数')
+    expect(html).toContain('起動時の更新チェック')
+    expect(html).toContain('aria-label="installer と起動時の更新チェックの日次取得数の比較"')
+    expect(html).toContain('稼働ユーザー数ではありません')
+    expect(html).toContain('新規ユーザー数ではありません')
+    expect(html).not.toContain('updater bundle')
+  })
+
+  it('shows dashes and the reason when there is no latest.json history', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({
+      ...data,
+      launchActivity: {
+        ...data.launchActivity,
+        launches: {
+          periodDownloads: 0,
+          series: data.launchActivity.launches.series.map((point) => ({
+            ...point,
+            dailyDownloads: null,
+          })),
+        },
+        launchesPerDay: null,
+      },
+    })
+
+    expect(html).toContain(
+      'latest.json のダウンロード履歴がないため、起動時の更新チェックを表示できません',
+    )
+    expect(html).not.toContain('アプリは起動のたびに latest.json を取得')
   })
 
   it('shows a dash and the reason when a signal cannot be compared', async () => {

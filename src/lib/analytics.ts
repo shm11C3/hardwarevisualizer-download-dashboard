@@ -8,6 +8,7 @@ import type {
   DashboardQuery,
   DashboardResponse,
   EmptyDashboardResponse,
+  LaunchActivity,
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
@@ -15,7 +16,6 @@ import type {
   ReleaseEvent,
   RepoStats,
   SeriesPoint,
-  UpdateHealth,
 } from '../types'
 import { architectureLabel, platformLabel, UPDATE_MANIFEST_ASSET_NAME } from './assets'
 import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './date'
@@ -113,10 +113,12 @@ interface AssetRow {
   total_downloads: number
 }
 
-interface KindDailyRow {
+interface LaunchActivityRow {
   date: string
+  installer_assets: number
   installer_total: number
-  updater_total: number
+  launch_assets: number
+  launch_total: number
 }
 
 interface ReleaseEffectTotalsRow {
@@ -726,7 +728,13 @@ function mapReleaseRows(result: D1Result<ReleaseEventResultRow>): ReleaseEventRo
   return (result.results ?? []).map((row) => ({ ...row, prerelease: Boolean(row.prerelease) }))
 }
 
-function updateHealthStatement(
+// Installer and latest.json downloads per snapshot date across every release.
+// latest.json is what the app fetches at startup, so its count follows launches.
+// Each release has its own latest.json and only the newest one is fetched, so
+// the sum across releases is the continuous series. The asset counts tell a date
+// with no such asset apart from a real zero. Scope is fixed on purpose: the scope
+// filter would otherwise mix update checks into installer downloads.
+function launchActivityStatement(
   database: DbReader,
   query: DashboardQuery,
   endDate: string,
@@ -738,14 +746,19 @@ function updateHealthStatement(
       `
         SELECT
           s.snapshot_date AS date,
+          SUM(CASE WHEN a.kind = 'installer' THEN 1 ELSE 0 END) AS installer_assets,
           SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS installer_total,
-          SUM(CASE WHEN a.kind = 'updater' THEN s.download_count ELSE 0 END) AS updater_total
+          SUM(CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN 1 ELSE 0 END)
+            AS launch_assets,
+          SUM(
+            CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN s.download_count ELSE 0 END
+          ) AS launch_total
         FROM snapshots s
         INNER JOIN assets a ON a.id = s.asset_id
         INNER JOIN releases r ON r.id = a.release_id
         WHERE r.draft = 0
           ${channelClause}
-          AND a.kind IN ('installer', 'updater')
+          AND (a.kind = 'installer' OR LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}')
           AND s.snapshot_date >= ?
           AND s.snapshot_date <= ?
         GROUP BY s.snapshot_date
@@ -755,31 +768,37 @@ function updateHealthStatement(
     .bind(baselineDate, endDate)
 }
 
-function mapUpdateHealth(
-  result: D1Result<KindDailyRow>,
+export function buildLaunchActivity(
+  rows: LaunchActivityRow[],
   startDate: string,
   endDate: string,
   baselineDate: string,
-): UpdateHealth {
-  const rows = result.results ?? []
-  const installerRows = rows.map((row) => ({ date: row.date, total: row.installer_total }))
-  const updaterRows = rows.map((row) => ({ date: row.date, total: row.updater_total }))
+): LaunchActivity {
+  const installerRows = rows
+    .filter((row) => numberValue(row.installer_assets) > 0)
+    .map((row) => ({ date: row.date, total: numberValue(row.installer_total) }))
+  const launchRows = rows
+    .filter((row) => numberValue(row.launch_assets) > 0)
+    .map((row) => ({ date: row.date, total: numberValue(row.launch_total) }))
   const periodTotal = (kindRows: DailyTotalRow[]) => {
     const normalized = normalizeRows(kindRows)
     const baseline = findLastOnOrBefore(normalized, baselineDate)?.total ?? 0
     const latest = findLastOnOrBefore(normalized, endDate)?.total ?? baseline
     return Math.max(0, latest - baseline)
   }
+  const installerSeries = buildDailySeries(installerRows, startDate, endDate)
+  const launchSeries = buildDailySeries(launchRows, startDate, endDate)
+  const observedLaunches = launchSeries.flatMap((point) =>
+    point.dailyDownloads === null ? [] : [point.dailyDownloads],
+  )
 
   return {
-    installer: {
-      periodDownloads: periodTotal(installerRows),
-      series: buildDailySeries(installerRows, startDate, endDate),
-    },
-    updater: {
-      periodDownloads: periodTotal(updaterRows),
-      series: buildDailySeries(updaterRows, startDate, endDate),
-    },
+    installer: { periodDownloads: periodTotal(installerRows), series: installerSeries },
+    launches: { periodDownloads: periodTotal(launchRows), series: launchSeries },
+    launchesPerDay:
+      observedLaunches.length === 0
+        ? null
+        : round(observedLaunches.reduce((sum, value) => sum + value, 0) / observedLaunches.length),
   }
 }
 
@@ -1425,7 +1444,7 @@ export async function getDashboard(
       analytics.effectiveBaselineDate,
       analytics.latestSnapshotDate,
     ),
-    updateHealthStatement(
+    launchActivityStatement(
       session,
       query,
       analytics.latestSnapshotDate,
@@ -1480,8 +1499,8 @@ export async function getDashboard(
     timeZone,
     query.channel,
   )
-  const health = mapUpdateHealth(
-    requireBatchResult<KindDailyRow>(results[5], 5),
+  const launchActivity = buildLaunchActivity(
+    requireBatchResult<LaunchActivityRow>(results[5], 5).results ?? [],
     analytics.series[0]?.date ?? analytics.requestedStartDate,
     analytics.latestSnapshotDate,
     analytics.effectiveBaselineDate,
@@ -1547,7 +1566,7 @@ export async function getDashboard(
     adoptionCurves: buildAdoptionCurves(adoptionRows, analytics.trackingSince, timeZone),
     releaseEffect,
     topAssets: assets,
-    updateHealth: health,
+    launchActivity,
     ...latestVersion,
     insights: buildInsights(analytics, platforms, releases, latestVersion),
   }
