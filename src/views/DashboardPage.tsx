@@ -1,4 +1,5 @@
 import { architectureLabel, platformLabel } from '../lib/assets'
+import { apiQuerySearch } from '../lib/query'
 import { BASELINE_DAYS, EVALUATION_WINDOW_DAYS } from '../lib/release-effect'
 import type {
   AssetBreakdownItem,
@@ -499,13 +500,9 @@ const INSIGHT_ICONS: Record<DashboardInsight['kind'], string> = {
   streak: '∞',
 }
 
+// The API redirects any other spelling, so link straight to the canonical one.
 function exportHref(path: string, query: DashboardQuery): string {
-  const params = new URLSearchParams({
-    days: String(query.days),
-    channel: query.channel,
-    scope: query.scope,
-  })
-  return `${path}?${params.toString()}`
+  return `${path}${apiQuerySearch(query)}`
 }
 
 function Insights({ items }: { items: DashboardInsight[] }) {
@@ -574,11 +571,9 @@ function statusFor(
 export function DashboardPage({
   data,
   query,
-  nonce,
 }: {
   data: DashboardResponse | EmptyDashboardResponse
   query: DashboardPageQuery
-  nonce: number
 }) {
   const formatter = createFormatter(data.meta.timeZone)
   const status = statusFor(data, formatter)
@@ -586,7 +581,7 @@ export function DashboardPage({
   return (
     <>
       <Hero status={status} />
-      <Controls query={query} nonce={nonce} />
+      <Controls query={query} />
       {data.status === 'empty' ? (
         <section class="empty-state">
           <div class="empty-icon">↘</div>
@@ -758,11 +753,11 @@ export function DashboardPage({
   )
 }
 
-export function ErrorPage({ query, nonce }: { query: DashboardPageQuery; nonce: number }) {
+export function ErrorPage({ query }: { query: DashboardPageQuery }) {
   return (
     <>
       <Hero status={{ kind: 'error', message: 'データ取得エラー' }} />
-      <Controls query={query} nonce={nonce} />
+      <Controls query={query} />
       <div class="error-banner" role="alert">
         ダウンロード分析データを取得できませんでした。時間をおいて再度お試しください。
       </div>

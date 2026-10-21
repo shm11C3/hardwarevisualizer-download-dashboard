@@ -3,39 +3,43 @@ import { Hono } from 'hono'
 import { getDashboard } from '../lib/analytics'
 import { stylesheetHref } from '../lib/asset-version'
 import { canonicalHref } from '../lib/canonical'
-import { CACHE_BUST_PARAM, coerceDashboardQuery } from '../lib/query'
+import { coerceDashboardQuery, dashboardHref, nonCanonicalRedirect } from '../lib/query'
 import { DOCUMENT_SECURITY_HEADERS } from '../lib/security'
 import type { AppEnv } from '../types'
 import { DashboardPage, ErrorPage } from '../views/DashboardPage'
 import { Layout } from '../views/Layout'
 
 const DOCUMENT_CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=600'
+// The mapping from a stray spelling to its canonical URL never changes, so the
+// redirect can sit in the edge cache far longer than the page it points to.
+const REDIRECT_CACHE_CONTROL = 'public, max-age=86400'
 
 const page = new Hono<AppEnv>()
 
 page.get('/', async (context) => {
   const url = new URL(context.req.url)
   const query = coerceDashboardQuery(url)
-  // A refreshed view must reach the origin rather than the five-minute cache,
-  // and it hands the next refresh a newer nonce than the one it was reached by.
-  const bypassCache = url.searchParams.has(CACHE_BUST_PARAM)
-  const nonce = Date.now()
+  const redirectTo = nonCanonicalRedirect(url, dashboardHref(query).slice(1))
+  if (redirectTo) {
+    context.header('Cache-Control', REDIRECT_CACHE_CONTROL)
+    return context.redirect(redirectTo, 301)
+  }
 
   for (const [name, value] of Object.entries(DOCUMENT_SECURITY_HEADERS)) {
     context.header(name, value)
   }
 
   const stylesheet = await stylesheetHref(context.env, url.origin)
-  // Filters and the refresh nonce only vary the URL, so every rendering of this
-  // route points at the same canonical document.
+  // Filters only vary the URL, so every rendering of this route points at the
+  // same canonical document.
   const canonical = canonicalHref(context.env, url)
 
   try {
     const data = await getDashboard(context.env, query)
-    context.header('Cache-Control', bypassCache ? 'no-store' : DOCUMENT_CACHE_CONTROL)
+    context.header('Cache-Control', DOCUMENT_CACHE_CONTROL)
     return context.html(
       <Layout stylesheet={stylesheet} canonical={canonical}>
-        <DashboardPage data={data} query={query} nonce={nonce} />
+        <DashboardPage data={data} query={query} />
       </Layout>,
     )
   } catch (error) {
@@ -51,7 +55,7 @@ page.get('/', async (context) => {
     context.header('Cache-Control', 'no-store')
     return context.html(
       <Layout stylesheet={stylesheet} canonical={canonical}>
-        <ErrorPage query={query} nonce={nonce} />
+        <ErrorPage query={query} />
       </Layout>,
       500,
     )

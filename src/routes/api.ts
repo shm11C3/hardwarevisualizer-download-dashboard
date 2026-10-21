@@ -2,11 +2,14 @@ import { Hono } from 'hono'
 import { getDashboard, getDashboardSeries } from '../lib/analytics'
 import { collectAll } from '../lib/collector'
 import { buildSeriesCsv } from '../lib/export'
-import { parseDashboardQuery } from '../lib/query'
+import { apiQuerySearch, nonCanonicalRedirect, parseDashboardQuery } from '../lib/query'
 import { BASELINE_SECURITY_HEADERS } from '../lib/security'
 import type { AppEnv } from '../types'
 
 const api = new Hono<AppEnv>()
+
+// See page.tsx: the canonical mapping is fixed, so the redirect outlives the data.
+const REDIRECT_CACHE_CONTROL = 'public, max-age=86400'
 
 async function secureEquals(left: string, right: string): Promise<boolean> {
   const encoder = new TextEncoder()
@@ -46,6 +49,12 @@ api.get('/dashboard', async (context) => {
     )
   }
 
+  const redirectTo = nonCanonicalRedirect(new URL(context.req.url), apiQuerySearch(query))
+  if (redirectTo) {
+    context.header('Cache-Control', REDIRECT_CACHE_CONTROL)
+    return context.redirect(redirectTo, 301)
+  }
+
   const response = await getDashboard(context.env, query)
   context.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   return context.json(response)
@@ -62,6 +71,12 @@ api.get('/export.csv', async (context) => {
       },
       400,
     )
+  }
+
+  const redirectTo = nonCanonicalRedirect(new URL(context.req.url), apiQuerySearch(query))
+  if (redirectTo) {
+    context.header('Cache-Control', REDIRECT_CACHE_CONTROL)
+    return context.redirect(redirectTo, 301)
   }
 
   const series = await getDashboardSeries(context.env, query)

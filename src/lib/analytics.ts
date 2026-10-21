@@ -17,7 +17,7 @@ import type {
   RepoStats,
   SeriesPoint,
 } from '../types'
-import { architectureLabel, platformLabel, UPDATE_MANIFEST_ASSET_NAME } from './assets'
+import { architectureLabel, platformLabel } from './assets'
 import { addDays, daysBetween, enumerateDates, laterDate, toDateKey } from './date'
 import {
   buildReleaseEffect,
@@ -524,6 +524,24 @@ function filterClause(query: DashboardQuery): string {
   return conditions.join(' AND ')
 }
 
+// filterClause for daily_rollups, which holds only non-draft releases and keeps
+// each release's channel and each asset's kind as columns of its own.
+function rollupFilterClause(query: DashboardQuery): string {
+  const conditions = ['1 = 1']
+
+  if (query.channel === 'stable') {
+    conditions.push('prerelease = 0')
+  }
+
+  if (query.scope === 'installers') {
+    conditions.push("kind = 'installer'")
+  } else if (query.scope === 'distribution') {
+    conditions.push("kind IN ('installer', 'updater', 'archive')")
+  }
+
+  return conditions.join(' AND ')
+}
+
 export function buildAdoptionCurves(
   inputRows: AdoptionCurveRow[],
   trackingSince: string,
@@ -636,13 +654,11 @@ function mapLastCollection(result: D1Result<RunRow>): CollectionRunSummary | nul
 function dailyTotalsStatement(database: DbReader, query: DashboardQuery): D1PreparedStatement {
   return database.prepare(
     `
-        SELECT s.snapshot_date AS date, SUM(s.download_count) AS total
-        FROM snapshots s
-        INNER JOIN assets a ON a.id = s.asset_id
-        INNER JOIN releases r ON r.id = a.release_id
-        WHERE ${filterClause(query)}
-        GROUP BY s.snapshot_date
-        ORDER BY s.snapshot_date ASC
+        SELECT snapshot_date AS date, SUM(download_count) AS total
+        FROM daily_rollups
+        WHERE ${rollupFilterClause(query)}
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date ASC
       `,
   )
 }
@@ -691,13 +707,11 @@ function platformTotalsStatement(
   return database
     .prepare(
       `
-        SELECT s.snapshot_date AS date, a.platform, SUM(s.download_count) AS total
-        FROM snapshots s
-        INNER JOIN assets a ON a.id = s.asset_id
-        INNER JOIN releases r ON r.id = a.release_id
-        WHERE ${filterClause(query)} AND s.snapshot_date BETWEEN ? AND ?
-        GROUP BY s.snapshot_date, a.platform
-        ORDER BY s.snapshot_date ASC, a.platform ASC
+        SELECT snapshot_date AS date, platform, SUM(download_count) AS total
+        FROM daily_rollups
+        WHERE ${rollupFilterClause(query)} AND snapshot_date BETWEEN ? AND ?
+        GROUP BY snapshot_date, platform
+        ORDER BY snapshot_date ASC, platform ASC
       `,
     )
     .bind(startDate, endDate)
@@ -740,29 +754,23 @@ function launchActivityStatement(
   endDate: string,
   baselineDate: string,
 ): D1PreparedStatement {
-  const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
+  const channelClause = query.channel === 'stable' ? 'AND prerelease = 0' : ''
   return database
     .prepare(
       `
         SELECT
-          s.snapshot_date AS date,
-          SUM(CASE WHEN a.kind = 'installer' THEN 1 ELSE 0 END) AS installer_assets,
-          SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS installer_total,
-          SUM(CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN 1 ELSE 0 END)
-            AS launch_assets,
-          SUM(
-            CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN s.download_count ELSE 0 END
-          ) AS launch_total
-        FROM snapshots s
-        INNER JOIN assets a ON a.id = s.asset_id
-        INNER JOIN releases r ON r.id = a.release_id
-        WHERE r.draft = 0
+          snapshot_date AS date,
+          SUM(CASE WHEN kind = 'installer' THEN asset_count ELSE 0 END) AS installer_assets,
+          SUM(CASE WHEN kind = 'installer' THEN download_count ELSE 0 END) AS installer_total,
+          SUM(CASE WHEN update_manifest = 1 THEN asset_count ELSE 0 END) AS launch_assets,
+          SUM(CASE WHEN update_manifest = 1 THEN download_count ELSE 0 END) AS launch_total
+        FROM daily_rollups
+        WHERE (kind = 'installer' OR update_manifest = 1)
           ${channelClause}
-          AND (a.kind = 'installer' OR LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}')
-          AND s.snapshot_date >= ?
-          AND s.snapshot_date <= ?
-        GROUP BY s.snapshot_date
-        ORDER BY s.snapshot_date ASC
+          AND snapshot_date >= ?
+          AND snapshot_date <= ?
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date ASC
       `,
     )
     .bind(baselineDate, endDate)
@@ -812,28 +820,22 @@ function releaseEffectTotalsStatement(
   query: DashboardQuery,
   fromDate: string,
 ): D1PreparedStatement {
-  const channelClause = query.channel === 'stable' ? 'AND r.prerelease = 0' : ''
+  const channelClause = query.channel === 'stable' ? 'AND prerelease = 0' : ''
   return database
     .prepare(
       `
         SELECT
-          s.snapshot_date AS date,
-          SUM(CASE WHEN a.kind = 'installer' THEN 1 ELSE 0 END) AS installer_assets,
-          SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS installer_total,
-          SUM(CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN 1 ELSE 0 END)
-            AS update_check_assets,
-          SUM(
-            CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN s.download_count ELSE 0 END
-          ) AS update_check_total
-        FROM snapshots s
-        INNER JOIN assets a ON a.id = s.asset_id
-        INNER JOIN releases r ON r.id = a.release_id
-        WHERE r.draft = 0
+          snapshot_date AS date,
+          SUM(CASE WHEN kind = 'installer' THEN asset_count ELSE 0 END) AS installer_assets,
+          SUM(CASE WHEN kind = 'installer' THEN download_count ELSE 0 END) AS installer_total,
+          SUM(CASE WHEN update_manifest = 1 THEN asset_count ELSE 0 END) AS update_check_assets,
+          SUM(CASE WHEN update_manifest = 1 THEN download_count ELSE 0 END) AS update_check_total
+        FROM daily_rollups
+        WHERE (kind = 'installer' OR update_manifest = 1)
           ${channelClause}
-          AND (a.kind = 'installer' OR LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}')
-          AND s.snapshot_date >= ?
-        GROUP BY s.snapshot_date
-        ORDER BY s.snapshot_date ASC
+          AND snapshot_date >= ?
+        GROUP BY snapshot_date
+        ORDER BY snapshot_date ASC
       `,
     )
     .bind(fromDate)
@@ -1345,15 +1347,20 @@ function describeSessionRoute(meta: D1Meta): string {
 }
 
 // 読み取りレプリケーション有効化後、クエリがレプリカから配信されているかを
-// Workers Logs で確認するためのログ。
+// Workers Logs で確認するためのログ。rowsRead は D1 の課金・無料枠の単位なので、
+// 1 リクエストあたりの読み取り量もあわせて残す。
 function logSessionRouting(source: string, results: (D1Result<unknown> | undefined)[]): void {
   const routes = new Set<string>()
+  let rowsRead = 0
   for (const result of results) {
     if (result) {
       routes.add(describeSessionRoute(result.meta))
+      rowsRead += result.meta.rows_read ?? 0
     }
   }
-  console.log(JSON.stringify({ event: 'd1-session-routing', source, routes: [...routes] }))
+  console.log(
+    JSON.stringify({ event: 'd1-session-routing', source, routes: [...routes], rowsRead }),
+  )
 }
 
 export async function getDashboardSeries(

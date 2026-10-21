@@ -1,4 +1,4 @@
-import { CACHE_BUST_PARAM, dashboardHref } from '../lib/query'
+import { dashboardHref } from '../lib/query'
 import type { ChannelFilter, DashboardPageQuery, DashboardQuery, ScopeFilter } from '../types'
 
 const REFRESH_ICON_PATH = 'M20 11a8 8 0 1 0 1 4M20 4v7h-7'
@@ -58,7 +58,7 @@ function Segmented<T extends string | number>({
   )
 }
 
-export function Controls({ query, nonce }: { query: DashboardPageQuery; nonce: number }) {
+export function Controls({ query }: { query: DashboardPageQuery }) {
   const trafficValues =
     query.traffic === undefined ? [] : query.traffic.length === 0 ? [''] : query.traffic
 
@@ -92,7 +92,6 @@ export function Controls({ query, nonce }: { query: DashboardPageQuery; nonce: n
         {trafficValues.map((value) => (
           <input type="hidden" name="traffic" value={value} />
         ))}
-        <input type="hidden" name={CACHE_BUST_PARAM} value={nonce} />
         <button class="refresh-button" type="submit" aria-label="最新データを再取得">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d={REFRESH_ICON_PATH} />
