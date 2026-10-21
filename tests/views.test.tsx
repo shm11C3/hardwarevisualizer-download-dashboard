@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { coerceDashboardQuery, dashboardHref, parseDashboardQuery } from '../src/lib/query'
+import {
+  ALLOWED_CHANNELS,
+  ALLOWED_DAYS,
+  ALLOWED_SCOPES,
+  apiQuerySearch,
+  coerceDashboardQuery,
+  dashboardHref,
+  nonCanonicalRedirect,
+  parseDashboardQuery,
+} from '../src/lib/query'
 import type {
   AssetBreakdownItem,
   DashboardQuery,
@@ -13,7 +22,7 @@ import { previewDashboard } from './fixtures/dashboard'
 const DEFAULTS: DashboardQuery = { days: 30, channel: 'stable', scope: 'installers' }
 
 function render(data: DashboardResponse, query: DashboardQuery = DEFAULTS): Promise<string> {
-  return Promise.resolve(<DashboardPage data={data} query={query} nonce={0} />).then(String)
+  return Promise.resolve(<DashboardPage data={data} query={query} />).then(String)
 }
 
 describe('dashboard query', () => {
@@ -30,9 +39,58 @@ describe('dashboard query', () => {
     expect(parseDashboardQuery(url)).toBeNull()
   })
 
-  it('ignores the cache-busting parameter when reading filters', () => {
+  it('ignores the retired cache-busting parameter when reading filters', () => {
     const url = new URL('https://example.com/?days=7&channel=all&scope=all&t=1234')
     expect(coerceDashboardQuery(url)).toEqual({ days: 7, channel: 'all', scope: 'all' })
+  })
+})
+
+describe('canonical dashboard URLs', () => {
+  const pageRedirect = (href: string) => {
+    const url = new URL(href, 'https://example.com')
+    return nonCanonicalRedirect(url, dashboardHref(coerceDashboardQuery(url)).slice(1))
+  }
+  const apiRedirect = (href: string) => {
+    const url = new URL(href, 'https://example.com')
+    const query = parseDashboardQuery(url)
+    return query ? nonCanonicalRedirect(url, apiQuerySearch(query)) : null
+  }
+
+  it('leaves the bare page and API paths alone', () => {
+    expect(pageRedirect('/')).toBeNull()
+    expect(apiRedirect('/api/dashboard')).toBeNull()
+  })
+
+  it('serves every link the page renders without a redirect', () => {
+    for (const days of ALLOWED_DAYS) {
+      for (const channel of ALLOWED_CHANNELS) {
+        for (const scope of ALLOWED_SCOPES) {
+          const query = { days, channel, scope }
+          for (const traffic of [undefined, [], ['viewsCount'], ['viewsUniques', 'clonesCount']]) {
+            const view = traffic === undefined ? query : { ...query, traffic }
+            expect(pageRedirect(dashboardHref(view as typeof DEFAULTS))).toBeNull()
+          }
+          expect(apiRedirect(`/api/dashboard${apiQuerySearch(query)}`)).toBeNull()
+          expect(apiRedirect(`/api/export.csv${apiQuerySearch(query)}`)).toBeNull()
+        }
+      }
+    }
+  })
+
+  it('redirects the refresh nonce, reordered parameters, and unknown extras', () => {
+    expect(pageRedirect('/?days=7&channel=all&scope=all&t=1234')).toBe(
+      '/?days=7&channel=all&scope=all',
+    )
+    expect(pageRedirect('/?scope=all&days=7&channel=all')).toBe('/?days=7&channel=all&scope=all')
+    expect(pageRedirect('/?traffic=clonesCount&traffic=viewsCount')).toBe(
+      '/?days=30&channel=stable&scope=installers&traffic=viewsCount&traffic=clonesCount',
+    )
+    expect(apiRedirect('/api/export.csv?days=90&channel=all&scope=all&cb=1')).toBe(
+      '/api/export.csv?days=90&channel=all&scope=all',
+    )
+    expect(apiRedirect('/api/dashboard?days=7')).toBe(
+      '/api/dashboard?days=7&channel=stable&scope=installers',
+    )
   })
 })
 
@@ -366,7 +424,6 @@ describe('DashboardPage', () => {
           message: 'まだダウンロード履歴がありません。',
         }}
         query={DEFAULTS}
-        nonce={0}
       />,
     ).then(String)
 

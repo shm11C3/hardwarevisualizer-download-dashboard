@@ -1,4 +1,5 @@
 -- Synthetic local demo data. Do not use as production history.
+DELETE FROM daily_rollups;
 DELETE FROM repo_stats;
 DELETE FROM snapshots;
 DELETE FROM assets;
@@ -578,3 +579,20 @@ INSERT INTO repo_stats (stat_date, stargazers, forks, views_count, views_uniques
   ('2026-08-21', 1856, 117, 315, 184, 58, 38, '2026-08-22T00:10:00Z'),
   ('2026-08-22', 1857, 117, 302, 178, 55, 36, '2026-08-22T00:10:00Z');
 INSERT INTO collection_runs (id, started_at, finished_at, status, snapshot_date, fetched_releases, fetched_assets, duration_ms) VALUES ('demo-run', '2026-08-21T15:10:00Z', '2026-08-21T15:10:01Z', 'success', '2026-08-22', 3, 11, 1042);
+-- Same rebuild the collector runs; see migrations/0004_daily_rollups.sql.
+INSERT INTO daily_rollups (
+  snapshot_date, prerelease, kind, platform, update_manifest, asset_count, download_count
+)
+SELECT
+  s.snapshot_date,
+  r.prerelease,
+  a.kind,
+  a.platform,
+  CASE WHEN LOWER(a.name) = 'latest.json' THEN 1 ELSE 0 END,
+  COUNT(*),
+  SUM(s.download_count)
+FROM snapshots s
+INNER JOIN assets a ON a.id = s.asset_id
+INNER JOIN releases r ON r.id = a.release_id
+WHERE r.draft = 0
+GROUP BY 1, 2, 3, 4, 5;

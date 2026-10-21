@@ -94,11 +94,26 @@ export function dashboardHref(
   return `/?${params.toString()}`
 }
 
+/** Query string the API endpoints answer under, in the one order they accept. */
+export function apiQuerySearch(query: DashboardQuery): string {
+  const params = new URLSearchParams({
+    days: String(query.days),
+    channel: query.channel,
+    scope: query.scope,
+  })
+  return `?${params.toString()}`
+}
+
 /**
- * The page itself is cached for five minutes, so the refresh form needs a
- * distinct URL to reach the origin again. Keep this nonce in a form field
- * rather than a crawlable link so search engines do not discover an endless
- * sequence of unique refresh URLs. The Worker treats it as opaque and never
- * feeds it into the dashboard query.
+ * Workers Cache keys on the full URL, so reordered parameters, an unknown extra
+ * one, or the retired `?t=` refresh nonce would each miss the cache and render
+ * from D1 again. Routes redirect any such spelling to the canonical one, which
+ * costs a Worker invocation but no database read. A bare path is left alone so
+ * `/` and `/api/dashboard` keep answering with the defaults.
+ *
+ * Returns the redirect target, or null when the URL is already canonical.
  */
-export const CACHE_BUST_PARAM = 't'
+export function nonCanonicalRedirect(url: URL, canonicalSearch: string): string | null {
+  if (url.search === '' || url.search === canonicalSearch) return null
+  return `${url.pathname}${canonicalSearch}`
+}

@@ -297,6 +297,8 @@ auto-merge は次の2つが揃っていないと機能しません。どちら�
 GET /api/dashboard?days=30&channel=stable&scope=installers
 ```
 
+パラメータはこの順序の正規形で受け付けます。順序違いや未知のパラメータを含む URL は、正規形へ 301 でリダイレクトします。`GET /api/export.csv` も同様です。
+
 ### `GET /api/health`
 
 D1 接続と基本設定を確認します。Secret は返しません。
@@ -324,6 +326,10 @@ GitHub Release Asset と、自動判定した OS、アーキテクチャ、配�
 ### `snapshots`
 
 `(snapshot_date, asset_id)` を主キーに、その日の累積 `download_count` を保持します。
+
+### `daily_rollups`
+
+`snapshots` を、日付・プレリリース状態・配布物種別・OS・`latest.json` かどうかの組ごとに合計した事前集計です（ドラフトは除外）。日次推移・OS 別推移・起動数・リリース効果の各グラフはこのテーブルから読みます。`snapshots` を直接集計すると、1回の描画で全アセット×全日数の行を読むためです。収集のたびにその日の分を作り直します。既存のリリースのプレリリース状態やアセットの分類が変わった場合は、全期間を作り直します。
 
 ### `repo_stats`
 
@@ -358,7 +364,9 @@ npm test
 │   └── workflows/     ci.yml, deploy.yml, dependabot-auto-merge.yml
 ├── migrations/
 │   ├── 0001_initial.sql
-│   └── 0002_repo_stats.sql
+│   ├── 0002_repo_stats.sql
+│   ├── 0003_perf_indexes.sql
+│   └── 0004_daily_rollups.sql  日次推移用の事前集計テーブル
 ├── public/            静的アセットのみ (CSS, アイコン, _headers)
 │   └── styles.css
 ├── seed/demo.sql
@@ -400,8 +408,9 @@ npm test
 - GitHub 上でリリースを削除して同じタグで作り直すと、新しい Release ID の行が追加されます。旧行と旧アセットは履歴保持のために残し、リリース別の表示ではタグ単位で合算します。
 - アセットのファイル名規則が変わった場合は `src/lib/assets.ts` の分類ルールを更新してください。
 - スタイルシートは `/styles.css?v=<内容ハッシュ>` として読み込みます。バージョンは Workers Assets が返す ETag から取得し、Worker の isolate 単位でメモ化します。CSS を変更すると URL が変わるため、古いキャッシュを持つブラウザに新しい HTML と古い CSS が同時に届くことはありません。`public/styles.css` を編集する際に手作業でのバージョン更新は不要です。
-- `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みと GitHub Traffic の系列選択は同じデータの別ビューであり、`?t=` はキャッシュ回避用のため、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは既定でリクエスト元を使います。独自ドメインと `*.workers.dev` の両方で応答する場合は、`wrangler.jsonc` の `vars` に `CANONICAL_ORIGIN` を設定してください。未設定だと各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
-- `/api` 配下は画面ではなくクライアント向けの JSON・CSV 応答なので、Worker は成功・エラー・404 を含むすべての API 応答に `X-Robots-Tag: noindex` を付けます。`robots.txt` では引き続きクロールを許可し、検索エンジンがこのヘッダを読めるようにします。トップページのインデックス可否には影響しません。
+- `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みと GitHub Traffic の系列選択は同じデータの別ビューなので、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは既定でリクエスト元を使います。独自ドメインと `*.workers.dev` の両方で応答する場合は、`wrangler.jsonc` の `vars` に `CANONICAL_ORIGIN` を設定してください。未設定だと各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
+- `/api` 配下は画面ではなくクライアント向けの JSON・CSV 応答なので、Worker は成功・エラー・404 を含むすべての API 応答に `X-Robots-Tag: noindex` を付けます。
+- `robots.txt` は `/api/` とクエリ文字列付きの URL のクロールを禁止し、`/` だけを許可します。AI クローラが絞り込みの全組み合わせと API を巡回し、D1 の無料枠（1日500万行の読み取り）を使い切ったためです。絞り込みビューはもともと canonical で `/` にまとめているので、検索結果への影響はありません。
 - `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
-- レスポンスは Workers Cache（`wrangler.jsonc` の `cache.enabled`）が Cloudflare のエッジでキャッシュし、ヒット時は Worker を起動せずに返します。対象はレスポンスの `Cache-Control` で制御しており、`/`・`/api/dashboard`・`/api/export.csv` の成功レスポンスが最大5分（+ stale-while-revalidate 10分）キャッシュされます。キャッシュキーはパスとクエリ文字列（パラメータの順序も区別）で、デプロイバージョンごとに独立するため、デプロイ直後は空のキャッシュから始まります。画面の「更新」フォームが付与する `t` パラメータは URL を一意にし、そのレスポンス自体も `no-store` になるため、従来どおりキャッシュをバイパスします。フォーム送信にすることで、nonce 付き URL を検索エンジンがたどれるリンクとして公開しません。ヒット状況はレスポンスの `Cf-Cache-Status` ヘッダで確認できます。
+- レスポンスは Workers Cache（`wrangler.jsonc` の `cache.enabled`）が Cloudflare のエッジでキャッシュし、ヒット時は Worker を起動せずに返します。対象はレスポンスの `Cache-Control` で制御しており、`/`・`/api/dashboard`・`/api/export.csv` の成功レスポンスが最大5分（+ stale-while-revalidate 10分）キャッシュされます。キャッシュキーはパスとクエリ文字列（パラメータの順序も区別）で、デプロイバージョンごとに独立するため、デプロイ直後は空のキャッシュから始まります。キャッシュキーを絞り込みの組み合わせ数に抑えるため、`/`・`/api/dashboard`・`/api/export.csv` は、パラメータの順序違い・未知のパラメータ・以前の更新フォームが付けていた `?t=` を含む URL を、D1 を読まずに正規形の URL へ 301 リダイレクトします（リダイレクト自体も1日キャッシュ）。クエリなしの `/` と `/api/dashboard` はそのまま既定値で応答します。キャッシュを迂回する手段はないため、「更新」は最大5分前のキャッシュを返すことがあります。データの更新は1日1回なので実害はありません。ヒット状況はレスポンスの `Cf-Cache-Status` ヘッダで確認できます。
 - `scope=all` は署名や更新メタデータも含むため、利用者数の近似には向きません。

@@ -1,5 +1,5 @@
 import type { CollectionResult, GitHubRelease, GitHubReleaseAsset } from '../types'
-import { classifyAsset } from './assets'
+import { classifyAsset, UPDATE_MANIFEST_ASSET_NAME } from './assets'
 import { toDateKey } from './date'
 import {
   fetchGitHubReleases,
@@ -69,7 +69,7 @@ function releaseStatements(
   })
 }
 
-interface AssetWithRelease {
+export interface AssetWithRelease {
   releaseId: number
   asset: GitHubReleaseAsset
 }
@@ -176,6 +176,108 @@ function snapshotStatements(
       )
       .bind(JSON.stringify(rows))
   })
+}
+
+interface StoredRelease {
+  id: number
+  prerelease: number
+  draft: number
+}
+
+interface StoredAsset {
+  id: number
+  release_id: number
+  name: string
+  platform: string
+  kind: string
+}
+
+function isUpdateManifest(name: string): boolean {
+  return name.toLowerCase() === UPDATE_MANIFEST_ASSET_NAME
+}
+
+/**
+ * Rollups bake in each release's channel and each asset's classification as they
+ * stood when the rollup was built. If GitHub now reports a different value for a
+ * row already stored — a prerelease promoted to stable, a release turned back
+ * into a draft, a renamed asset, or a classifier rule changed by a deploy —
+ * every past date has to be rebuilt. Otherwise only the date being collected is
+ * new, and rebuilding just that date keeps the daily write cheap.
+ */
+export function rollupsNeedFullRebuild(
+  storedReleases: StoredRelease[],
+  storedAssets: StoredAsset[],
+  releases: GitHubRelease[],
+  assets: AssetWithRelease[],
+): boolean {
+  const releasesById = new Map(storedReleases.map((release) => [release.id, release]))
+  for (const release of releases) {
+    const stored = releasesById.get(release.id)
+    if (
+      stored &&
+      (stored.prerelease !== Number(release.prerelease) || stored.draft !== Number(release.draft))
+    ) {
+      return true
+    }
+  }
+
+  const assetsById = new Map(storedAssets.map((asset) => [asset.id, asset]))
+  for (const { releaseId, asset } of assets) {
+    const stored = assetsById.get(asset.id)
+    if (!stored) continue
+    const classification = classifyAsset(asset.name)
+    if (
+      stored.release_id !== releaseId ||
+      stored.platform !== classification.platform ||
+      stored.kind !== classification.kind ||
+      isUpdateManifest(stored.name) !== isUpdateManifest(asset.name)
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * Rebuilds daily_rollups for one snapshot date, or for every date when given
+ * null. migrations/0004_daily_rollups.sql backfills with the same query, so keep
+ * the two in step.
+ */
+function rollupStatements(
+  database: D1Database,
+  snapshotDate: string | null,
+): D1PreparedStatement[] {
+  const dateClause = snapshotDate === null ? '' : 'AND s.snapshot_date = ?'
+  const insert = database.prepare(
+    `
+      INSERT INTO daily_rollups (
+        snapshot_date, prerelease, kind, platform, update_manifest, asset_count, download_count
+      )
+      SELECT
+        s.snapshot_date,
+        r.prerelease,
+        a.kind,
+        a.platform,
+        CASE WHEN LOWER(a.name) = '${UPDATE_MANIFEST_ASSET_NAME}' THEN 1 ELSE 0 END,
+        COUNT(*),
+        SUM(s.download_count)
+      FROM snapshots s
+      INNER JOIN assets a ON a.id = s.asset_id
+      INNER JOIN releases r ON r.id = a.release_id
+      WHERE r.draft = 0
+        ${dateClause}
+      GROUP BY 1, 2, 3, 4, 5
+    `,
+  )
+
+  if (snapshotDate === null) {
+    return [database.prepare('DELETE FROM daily_rollups'), insert]
+  }
+  return [
+    database.prepare('DELETE FROM daily_rollups WHERE snapshot_date = ?').bind(snapshotDate),
+    insert.bind(snapshotDate),
+  ]
 }
 
 function errorMessage(error: unknown): string {
@@ -294,19 +396,21 @@ export async function collectDownloads(
     )
     const capturedAt = new Date().toISOString()
 
-    const statements = [
-      ...releaseStatements(env.DB, releases, capturedAt),
-      ...assetStatements(env.DB, assets, capturedAt),
-      ...snapshotStatements(env.DB, assets, snapshotDate, capturedAt),
-    ]
-
-    if (statements.length > 0) {
-      await env.DB.batch(statements)
-    }
+    // Read before the upserts below overwrite the values being compared.
+    const [storedReleases, storedAssets] = await env.DB.batch([
+      env.DB.prepare('SELECT id, prerelease, draft FROM releases'),
+      env.DB.prepare('SELECT id, release_id, name, platform, kind FROM assets'),
+    ])
+    const rebuildAllRollups = rollupsNeedFullRebuild(
+      (storedReleases?.results ?? []) as StoredRelease[],
+      (storedAssets?.results ?? []) as StoredAsset[],
+      releases,
+      assets,
+    )
 
     // Deleted or temporarily missing release assets are carried forward. Without this,
     // replacing an asset would make the repository's cumulative total appear to decrease.
-    await env.DB.prepare(
+    const carryForward = env.DB.prepare(
       `
         INSERT INTO snapshots (snapshot_date, captured_at, asset_id, download_count)
         SELECT ?, ?, a.id,
@@ -326,9 +430,18 @@ export async function collectDownloads(
             AND current.snapshot_date = ?
         )
       `,
-    )
-      .bind(snapshotDate, capturedAt, snapshotDate, snapshotDate)
-      .run()
+    ).bind(snapshotDate, capturedAt, snapshotDate, snapshotDate)
+
+    // One batch is one transaction: a failed run must not leave release flags
+    // updated while their rollups are stale, or the next run would see nothing
+    // changed and never rebuild the past dates.
+    await env.DB.batch([
+      ...releaseStatements(env.DB, releases, capturedAt),
+      ...assetStatements(env.DB, assets, capturedAt),
+      ...snapshotStatements(env.DB, assets, snapshotDate, capturedAt),
+      carryForward,
+      ...rollupStatements(env.DB, rebuildAllRollups ? null : snapshotDate),
+    ])
 
     // Without fresh statistics SQLite picks a plan that scans every snapshot row
     // instead of the covering indexes. The daily write is the one moment the data
