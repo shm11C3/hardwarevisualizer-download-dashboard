@@ -1,3 +1,17 @@
+# Crawlers (search, AI training, AI search indexing) may fetch / only.
+# Crawling every filter combination and the API exhausted D1's daily read
+# allowance; the filtered views all declare / as canonical anyway.
 User-agent: *
 Disallow: /api/
 Disallow: /*?
+
+# AI agents fetching a page because a person asked them to. They request one
+# URL at a time rather than walking the site, so they may read filtered views
+# and the API. A crawler matches only its own group, so the rules above still
+# apply to the bulk crawlers run by the same vendors (GPTBot, OAI-SearchBot,
+# ClaudeBot, Claude-SearchBot, PerplexityBot, ...).
+User-agent: ChatGPT-User
+User-agent: Claude-User
+User-agent: Perplexity-User
+User-agent: MistralAI-User
+Allow: /
