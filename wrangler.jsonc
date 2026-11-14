@@ -4,9 +4,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
   "minify": true,
-  // The dashboard is served on its custom domain alone. Both of these default
-  // to true when the config declares no route, so every deploy switched the
-  // workers.dev URLs back on after they had been turned off in the dashboard.
+  // The dashboard is served on its custom domain alone. Declaring it here keeps
+  // the domain attached on every deploy instead of relying on dashboard state;
+  // wrangler also detaches custom domains of this Worker that are not listed.
+  "routes": [{ "pattern": "dl.hardviz.io", "custom_domain": true }],
+  // Both of these default to true, and a deploy switched the workers.dev URLs
+  // back on after they had been turned off in the dashboard.
   "workers_dev": false,
   "preview_urls": false,
   // Workers Cache answers repeat requests at the edge without invoking the
@@ -31,10 +34,11 @@
   "vars": {
     "GITHUB_OWNER": "shm11C3",
     "GITHUB_REPO": "HardwareVisualizer",
-    "TIME_ZONE": "Asia/Tokyo"
-    // CANONICAL_ORIGIN: 独自ドメインと workers.dev の両方で応答する場合に、
-    // インデックスさせたいオリジン (例 "https://example.com") を設定します。
+    "TIME_ZONE": "Asia/Tokyo",
+    // インデックスさせたいオリジン。旧ドメインや workers.dev から応答した場合も
+    // <link rel="canonical"> はこのオリジンを指します。
     // 未設定ならリクエストのオリジンを canonical として使います。
+    "CANONICAL_ORIGIN": "https://dl.hardviz.io"
   },
   "triggers": {
     "crons": ["10 15 * * *"]
