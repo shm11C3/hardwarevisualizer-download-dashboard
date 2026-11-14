@@ -221,12 +221,14 @@ Release、スター、フォークの収集だけなら公開リポジトリの�
 npm run deploy
 ```
 
+公開ドメインは `wrangler.jsonc` の `routes` で `dl.hardviz.io` をカスタムドメインとして宣言しています。デプロイ時に Wrangler がこのドメインを Worker に割り当て、DNS レコードと証明書も作成します（ゾーン `hardviz.io` が同じ Cloudflare アカウントにある必要があります）。`routes` に書かれていないカスタムドメインはデプロイ時にこの Worker から外れるため、ドメインを追加・変更するときはダッシュボードではなく `routes` を編集してください。フォークして別ドメインで運用する場合は、`routes` と `vars.CANONICAL_ORIGIN` を自分のドメインに書き換えます。
+
 ### 5. 初回収集
 
 初回収集が基準スナップショットになります。
 
 ```bash
-curl -X POST https://YOUR_WORKER_DOMAIN/api/admin/collect \
+curl -X POST https://dl.hardviz.io/api/admin/collect \
   -H 'Authorization: Bearer YOUR_COLLECT_TOKEN'
 ```
 
@@ -408,7 +410,7 @@ npm test
 - GitHub 上でリリースを削除して同じタグで作り直すと、新しい Release ID の行が追加されます。旧行と旧アセットは履歴保持のために残し、リリース別の表示ではタグ単位で合算します。
 - アセットのファイル名規則が変わった場合は `src/lib/assets.ts` の分類ルールを更新してください。
 - スタイルシートは `/styles.css?v=<内容ハッシュ>` として読み込みます。バージョンは Workers Assets が返す ETag から取得し、Worker の isolate 単位でメモ化します。CSS を変更すると URL が変わるため、古いキャッシュを持つブラウザに新しい HTML と古い CSS が同時に届くことはありません。`public/styles.css` を編集する際に手作業でのバージョン更新は不要です。
-- `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みと GitHub Traffic の系列選択は同じデータの別ビューなので、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは既定でリクエスト元を使います。独自ドメインと `*.workers.dev` の両方で応答する場合は、`wrangler.jsonc` の `vars` に `CANONICAL_ORIGIN` を設定してください。未設定だと各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
+- `<link rel="canonical">` は常に `/` を指します。期間・チャンネル・集計対象の絞り込みと GitHub Traffic の系列選択は同じデータの別ビューなので、URL 違いを1つの正規 URL にまとめて Search Console の重複扱いを防ぎます。オリジンは `wrangler.jsonc` の `vars.CANONICAL_ORIGIN`（`https://dl.hardviz.io`）です。旧ドメインや `*.workers.dev` から応答した場合も canonical は `dl.hardviz.io` を指します。未設定にするとリクエスト元のオリジンを使うため、複数のホストで応答すると各ホストが自分自身を canonical として宣言し、重複が解消されません。404 ページには canonical を出しません。
 - `/api` 配下は画面ではなくクライアント向けの JSON・CSV 応答なので、Worker は成功・エラー・404 を含むすべての API 応答に `X-Robots-Tag: noindex` を付けます。
 - `robots.txt` は `/api/` とクエリ文字列付きの URL のクロールを禁止し、`/` だけを許可します。AI クローラが絞り込みの全組み合わせと API を巡回し、D1 の無料枠（1日500万行の読み取り）を使い切ったためです。絞り込みビューはもともと canonical で `/` にまとめているので、検索結果への影響はありません。一方、利用者の依頼を受けてその都度ページを取得する AI エージェント（`ChatGPT-User`・`Claude-User`・`Perplexity-User`・`MistralAI-User`）には、絞り込みビューと API を含むすべてのパスを許可しています。robots.txt ではクローラは自分に一致する最も具体的なグループだけに従うため、同じ事業者の巡回クローラ（`GPTBot`・`ClaudeBot`・`OAI-SearchBot` など）には引き続き `*` の制限がかかります。エージェントを追加するときは、巡回クローラではなく利用者起点で取得する User-Agent であることを確認してください。なお Cloudflare の「AI ボットをブロック」や AI Crawl Control でこれらをブロックしていると、robots.txt より前にエッジで拒否されます。
 - `public/_headers` は Assets バインディングが直接返すファイルにしか適用されません。`/` は Worker が返すため、同等のヘッダを `src/lib/security.ts` で付けています。CSP を変更するときは両方を更新してください。
