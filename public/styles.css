@@ -172,22 +172,24 @@ a:focus-visible {
 .page-shell {
   width: min(1280px, calc(100% - 48px));
   margin: 0 auto;
-  padding: 78px 0 64px;
+  padding: 32px 0 64px;
 }
 
 .hero {
   display: flex;
-  gap: 32px;
-  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 42px;
+  margin-bottom: 20px;
 }
 
-.hero-copy {
-  max-width: 920px;
+.hero h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
 }
 
-.eyebrow,
 .panel-kicker {
   margin: 0;
   color: var(--primary-bright);
@@ -197,50 +199,11 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
-.eyebrow {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.eyebrow span {
-  width: 22px;
-  height: 1px;
-  background: var(--primary);
-  box-shadow: 0 0 12px var(--primary);
-}
-
-.hero h1 {
-  margin: 0;
-  font-size: clamp(42px, 5vw, 68px);
-  font-weight: 720;
-  line-height: 1.08;
-  letter-spacing: -0.052em;
-}
-
-.hero h1 em {
-  color: transparent;
-  font-style: normal;
-  background: linear-gradient(100deg, var(--primary-bright), var(--secondary));
-  background-clip: text;
-  -webkit-background-clip: text;
-}
-
-.hero-description {
-  max-width: 670px;
-  margin: 26px 0 0;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.9;
-}
-
 .data-status {
   display: inline-flex;
   flex: 0 0 auto;
   gap: 9px;
   align-items: center;
-  margin-bottom: 8px;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -1076,19 +1039,6 @@ tbody tr:hover td {
 }
 
 @media (max-width: 860px) {
-  .page-shell {
-    padding-top: 54px;
-  }
-
-  .hero {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .data-status {
-    margin-bottom: 0;
-  }
-
   .control-panel {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1139,19 +1089,11 @@ tbody tr:hover td {
   }
 
   .page-shell {
-    padding-top: 42px;
-  }
-
-  .hero {
-    margin-bottom: 30px;
+    padding-top: 24px;
   }
 
   .hero h1 {
-    font-size: clamp(38px, 12vw, 55px);
-  }
-
-  .hero-description {
-    font-size: 13px;
+    font-size: 19px;
   }
 
   .control-panel {
