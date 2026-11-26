@@ -68,12 +68,12 @@ GitHub API が返すのは、各 Release Asset の現在時点の累積ダウン
 
 最新リリースの反応を、既存のスナップショットだけから次の 4 指標で評価します。`GET /api/dashboard` の `releaseEffect` にも同じ値が入ります。
 
-| 指標 | 内容 |
-|---|---|
-| 採用速度 | 最新リリースと前回リリースの installer 累積取得数を、公開日を基準に**同じ経過日数**で比較 |
-| Release Lift | 公開前 7 日間の 1 日平均 installer 取得数に対する、公開後の 1 日平均の倍率 |
-| Incremental Downloads | 公開前の平均ペースが続いた場合の見込みを、公開後の実績が上回った分 |
-| 利用活動シグナル | 起動時の更新チェックとして数えられる `latest.json` の 1 日あたり取得数を、前回リリースの同じ経過日数と比較 |
+| 指標                  | 内容                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 採用速度              | 最新リリースと前回リリースの installer 累積取得数を、公開日を基準に**同じ経過日数**で比較                  |
+| Release Lift          | 公開前 7 日間の 1 日平均 installer 取得数に対する、公開後の 1 日平均の倍率                                 |
+| Incremental Downloads | 公開前の平均ペースが続いた場合の見込みを、公開後の実績が上回った分                                         |
+| 利用活動シグナル      | 起動時の更新チェックとして数えられる `latest.json` の 1 日あたり取得数を、前回リリースの同じ経過日数と比較 |
 
 - 評価は公開後 30 日（採用曲線と同じ範囲）までで、それ以降は Day 30 の値に固定します。
 - 各リリースに `latest.json` があり、リリースが切り替わると別の asset に取得数が積まれます。全リリースの `latest.json` の累積値を合算して、連続した 1 つの系列として扱います。前回リリースとの公開間隔が評価日数より短い場合は、重ならない範囲の日数で比較します。
@@ -98,11 +98,11 @@ GitHub API が返すのは、各 Release Asset の現在時点の累積ダウン
 
 ### 集計対象
 
-| スコープ | 対象 |
-|---|---|
-| `installers` | `.exe`, `.msi`, `.dmg`, `.pkg`, `.AppImage`, `.deb`, `.rpm` |
-| `distribution` | インストーラー、更新用バンドル、一般アーカイブ |
-| `all` | 署名、チェックサム、メタデータを含む全アセット |
+| スコープ       | 対象                                                        |
+| -------------- | ----------------------------------------------------------- |
+| `installers`   | `.exe`, `.msi`, `.dmg`, `.pkg`, `.AppImage`, `.deb`, `.rpm` |
+| `distribution` | インストーラー、更新用バンドル、一般アーカイブ              |
+| `all`          | 署名、チェックサム、メタデータを含む全アセット              |
 
 画面の既定値は `installers` です。`.sig` や `latest.json` などのメタデータ、macOS の更新用 `.app.tar.gz` が手動インストール数に混ざるのを避けています。Windows の `.msi` / `.exe` や Linux の `.AppImage` / `.deb` / `.rpm` は、アプリの自動更新も同じファイルを取得するため、`installers` にも更新による取得が含まれます。新規インストール数の上限として読んでください。
 
@@ -238,10 +238,10 @@ curl -X POST https://dl.hardviz.io/api/admin/collect \
 
 検証と公開は別のワークフローに分かれています。
 
-| ワークフロー | 起動条件 | 内容 |
-|---|---|---|
-| `.github/workflows/ci.yml` | Pull Request と `main` への push | 型チェック、Biome、テスト |
-| `.github/workflows/deploy.yml` | `main` の CI が成功したとき | D1 マイグレーション適用、Worker デプロイ |
+| ワークフロー                   | 起動条件                         | 内容                                     |
+| ------------------------------ | -------------------------------- | ---------------------------------------- |
+| `.github/workflows/ci.yml`     | Pull Request と `main` への push | 型チェック、Biome、テスト                |
+| `.github/workflows/deploy.yml` | `main` の CI が成功したとき      | D1 マイグレーション適用、Worker デプロイ |
 
 デプロイは push ではなく CI の完了イベントを受けて起動し、CI が失敗した回は実行されません。分離しても未検証のコードが公開されないようにするためです。チェックアウトは CI が検証したコミットの SHA を明示的に指定します。既定の挙動ではデプロイ時点のブランチ先端を取得してしまい、検証したものと別のコードを公開しかねないためです。
 
@@ -253,10 +253,10 @@ curl -X POST https://dl.hardviz.io/api/admin/collect \
 
 リポジトリの Settings、Secrets and variables、Actions から次の2つを登録します。
 
-| 名前 | 内容 |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | Workers と D1 の編集権限を持つ API トークン |
-| `CLOUDFLARE_ACCOUNT_ID` | デプロイ先アカウントの ID |
+| 名前                    | 内容                                        |
+| ----------------------- | ------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Workers と D1 の編集権限を持つ API トークン |
+| `CLOUDFLARE_ACCOUNT_ID` | デプロイ先アカウントの ID                   |
 
 API トークンは Cloudflare ダッシュボードの My Profile、API Tokens から、Edit Cloudflare Workers テンプレートを基に作成します。D1 の編集権限を含めてください。
 
@@ -272,10 +272,10 @@ API トークンは Cloudflare ダッシュボードの My Profile、API Tokens 
 
 auto-merge は次の2つが揃っていないと機能しません。どちらも欠けると、ワークフローは PR にマージ予約を入れられずに失敗します。
 
-| 場所 | 設定 |
-|---|---|
-| Settings、General、Pull Requests | Allow auto-merge を有効化 |
-| Settings、Rules または Branches | `main` に対して `CI / Typecheck, lint, test` を必須チェックに指定 |
+| 場所                             | 設定                                                              |
+| -------------------------------- | ----------------------------------------------------------------- |
+| Settings、General、Pull Requests | Allow auto-merge を有効化                                         |
+| Settings、Rules または Branches  | `main` に対して `CI / Typecheck, lint, test` を必須チェックに指定 |
 
 必須チェックを指定していない状態では、auto-merge は待つ対象が無いため予約できません。テストを待たずにマージされる事故を防ぐ意味でも、ブランチ保護は必須です。
 
@@ -287,11 +287,11 @@ auto-merge は次の2つが揃っていないと機能しません。どちら�
 
 クエリ:
 
-| 名前 | 値 | 既定値 |
-|---|---|---|
-| `days` | `7`, `30`, `90`, `365` | `30` |
-| `channel` | `stable`, `all` | `stable` |
-| `scope` | `installers`, `distribution`, `all` | `installers` |
+| 名前      | 値                                  | 既定値       |
+| --------- | ----------------------------------- | ------------ |
+| `days`    | `7`, `30`, `90`, `365`              | `30`         |
+| `channel` | `stable`, `all`                     | `stable`     |
+| `scope`   | `installers`, `distribution`, `all` | `installers` |
 
 例:
 
