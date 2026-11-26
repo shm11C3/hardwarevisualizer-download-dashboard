@@ -135,6 +135,14 @@ interface ReleaseEffectTotalsRow {
   update_check_total: number
 }
 
+interface TagTotalResultRow {
+  tag: string
+  date: string
+  installer_assets: number
+  total: number
+  updater_total: number
+}
+
 interface ReleaseEventResultRow {
   tag: string
   label: string
@@ -995,7 +1003,8 @@ export function planStaleLinks(
 }
 
 // Cumulative count of one asset as of a date: the latest snapshot on or before
-// it, so a missed collection on that exact date does not drop the asset.
+// it, so a missed collection on that exact date does not drop the asset. Used
+// for the period ends, which are always observed snapshot dates.
 function countAsOf(dateExpression: string): string {
   return `COALESCE((
             SELECT s.download_count
@@ -1004,6 +1013,20 @@ function countAsOf(dateExpression: string): string {
             ORDER BY s.snapshot_date DESC
             LIMIT 1
           ), 0)`
+}
+
+// Cumulative count of one asset at the first snapshot on or after a date, or
+// NULL without one. A stale-download boundary must never fall back to an
+// earlier snapshot: that would count downloads made while the release was still
+// current. Moving it later only leaves out a few stale downloads.
+function countFrom(dateExpression: string): string {
+  return `(
+            SELECT s.download_count
+            FROM snapshots s
+            WHERE s.asset_id = a.id AND s.snapshot_date >= ${dateExpression}
+            ORDER BY s.snapshot_date ASC
+            LIMIT 1
+          )`
 }
 
 // Every count is a single seek on the (asset_id, snapshot_date) index, so the
@@ -1022,17 +1045,25 @@ function staleLinksStatement(database: DbReader, plan: StaleLinkPlan): D1Prepare
             json_extract(value, '$.from') AS from_date,
             json_extract(value, '$.recent') AS recent_date
           FROM json_each(?)
-        ), stale AS (
+        ), stale_counts AS MATERIALIZED (
           SELECT
             r.tag_name AS tag,
             a.platform,
-            0 AS period_downloads,
-            MAX(0, ${countAsOf('?')} - ${countAsOf('cut.from_date')}) AS stale_downloads,
-            MAX(0, ${countAsOf('?')} - ${countAsOf('cut.recent_date')}) AS recent_downloads
+            ${countAsOf('?')} AS end_count,
+            ${countFrom('cut.from_date')} AS from_count,
+            ${countFrom('cut.recent_date')} AS recent_count
           FROM cut
           CROSS JOIN releases r ON r.tag_name = cut.tag
           INNER JOIN assets a ON a.release_id = r.id
           WHERE r.draft = 0 AND r.prerelease = 0 AND a.kind = 'installer'
+        ), stale AS (
+          SELECT
+            tag,
+            platform,
+            0 AS period_downloads,
+            MAX(0, end_count - COALESCE(from_count, end_count)) AS stale_downloads,
+            MAX(0, end_count - COALESCE(recent_count, end_count)) AS recent_downloads
+          FROM stale_counts
         ), period AS (
           SELECT
             r.tag_name AS tag,
@@ -1056,7 +1087,6 @@ function staleLinksStatement(database: DbReader, plan: StaleLinkPlan): D1Prepare
     )
     .bind(
       JSON.stringify(plan.cuts.map(({ tag, from, recent }) => ({ tag, from, recent }))),
-      plan.endDate,
       plan.endDate,
       plan.endDate,
       plan.baselineDate,
@@ -1166,13 +1196,18 @@ function releaseEffectTagTotalsStatement(
   return database
     .prepare(
       `
-        SELECT r.tag_name AS tag, s.snapshot_date AS date, SUM(s.download_count) AS total
+        SELECT
+          r.tag_name AS tag,
+          s.snapshot_date AS date,
+          SUM(CASE WHEN a.kind = 'installer' THEN 1 ELSE 0 END) AS installer_assets,
+          SUM(CASE WHEN a.kind = 'installer' THEN s.download_count ELSE 0 END) AS total,
+          SUM(CASE WHEN a.kind = 'updater' THEN s.download_count ELSE 0 END) AS updater_total
         FROM snapshots s
         INNER JOIN assets a ON a.id = s.asset_id
         INNER JOIN releases r ON r.id = a.release_id
         WHERE r.draft = 0
           ${channelClause}
-          AND a.kind = 'installer'
+          AND a.kind IN ('installer', 'updater')
           AND r.tag_name IN (?, ?)
         GROUP BY r.tag_name, s.snapshot_date
         ORDER BY s.snapshot_date ASC
@@ -1185,7 +1220,7 @@ function mapReleaseEffect(
   plan: ReleaseEffectPlan,
   trackingSince: string,
   totals: D1Result<ReleaseEffectTotalsRow>,
-  tagTotals: D1Result<TagTotalRow>,
+  tagTotals: D1Result<TagTotalResultRow>,
 ): ReleaseEffect {
   const rows = totals.results ?? []
   return buildReleaseEffect(plan, {
@@ -1199,11 +1234,15 @@ function mapReleaseEffect(
     updaterTotals: rows
       .filter((row) => numberValue(row.updater_assets) > 0)
       .map((row) => ({ date: row.date, total: numberValue(row.updater_total) })),
-    tagTotals: (tagTotals.results ?? []).map((row) => ({
-      tag: row.tag,
-      date: row.date,
-      total: numberValue(row.total),
-    })),
+    // A date with no installer of the release must stay missing, not read as 0.
+    tagTotals: (tagTotals.results ?? [])
+      .filter((row) => numberValue(row.installer_assets) > 0)
+      .map((row) => ({
+        tag: row.tag,
+        date: row.date,
+        total: numberValue(row.total),
+        updaterTotal: numberValue(row.updater_total),
+      })),
   })
 }
 
@@ -1866,7 +1905,7 @@ export async function getDashboard(
         effectPlan,
         analytics.trackingSince,
         requireBatchResult<ReleaseEffectTotalsRow>(results[11], 11),
-        requireBatchResult<TagTotalRow>(results[12], 12),
+        requireBatchResult<TagTotalResultRow>(results[12], 12),
       )
     : null
 

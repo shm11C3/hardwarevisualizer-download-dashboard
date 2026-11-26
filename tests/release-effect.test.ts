@@ -397,6 +397,27 @@ describe('installBase', () => {
     expect(effect.installBase.updatedInstalls).toBe(174)
   })
 
+  it('keeps the own publish-date updater downloads of the release out of the baseline', () => {
+    // No updater downloads before the release; the publish-date snapshot already
+    // holds 100 of the new release's, and 300 by Day 3.
+    const updaterTotals = [
+      ...cumulative('2026-08-01', '2026-08-19', () => 0).map((row) => ({ ...row, total: 0 })),
+      { date: '2026-08-20', total: 100 },
+      { date: '2026-08-21', total: 167 },
+      { date: '2026-08-22', total: 233 },
+      { date: '2026-08-23', total: 300 },
+    ]
+    const tagTotals = [
+      ...tagRows('v1.10.1', '2026-08-11', [60, 100, 148, 190, 220]),
+      { tag: 'v1.11.0', date: '2026-08-20', total: 0, updaterTotal: 100 },
+      ...tagRows('v1.11.0', '2026-08-21', [100, 150, 194]),
+    ]
+    const effect = evaluate([PREVIOUS, LATEST], '2026-08-23', data({ updaterTotals, tagTotals }))
+
+    // 144 installers above the pace plus all 300 updater downloads.
+    expect(effect.installBase.updatedInstalls).toBe(444)
+  })
+
   it('stops at the update window even when the evaluation runs longer', () => {
     const effect = evaluate(
       [PREVIOUS, LATEST],

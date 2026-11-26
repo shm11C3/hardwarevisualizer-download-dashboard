@@ -32,7 +32,10 @@ const FALLBACK_LOOKBACK_DAYS = 14
 export interface TagTotalRow {
   tag: string
   date: string
+  /** Cumulative installer downloads of the release. */
   total: number
+  /** Cumulative updater-only downloads of the release. */
+  updaterTotal?: number
 }
 
 interface PlannedRelease extends ReleaseEffectRelease {
@@ -59,7 +62,7 @@ export interface ReleaseEffectData {
   updateCheckTotals: DailyTotalRow[]
   /** Cumulative updater-only downloads (macOS .app.tar.gz) across every release. */
   updaterTotals: DailyTotalRow[]
-  /** Cumulative installer downloads of the latest and previous release. */
+  /** Cumulative installer and updater downloads of the latest and previous release. */
   tagTotals: TagTotalRow[]
 }
 
@@ -245,16 +248,30 @@ export function buildReleaseEffect(
     windowInstallers !== undefined
       ? Math.max(0, windowInstallers - othersAtPublish) - baselinePerDay * windowDays
       : null
-  const updaterBaseline = ratePerDay(updater, baselineStart, publishedDate)
-  const updaterWindow = ratePerDay(updater, publishedDate, windowEnd)
+  // As with installers, the release's own updater downloads already in the
+  // publish-date snapshot belong to the post-release window, not the baseline.
+  const releaseUpdaterAtPublish =
+    data.tagTotals.find((row) => row.tag === release.tag && row.date === publishedDate)
+      ?.updaterTotal ?? 0
+  const updaterAtPublish = updater.get(publishedDate)
+  const updaterOthersAtPublish =
+    updaterAtPublish === undefined
+      ? null
+      : Math.max(0, updaterAtPublish - Math.max(0, releaseUpdaterAtPublish))
+  const updaterBaselineStart = updater.get(baselineStart)
+  const updaterWindowEnd = updater.get(windowEnd)
   // A history without updater files (no macOS build) adds nothing rather than
   // making the whole estimate unavailable.
   const updaterExcess =
     updater.size === 0
       ? 0
-      : updaterBaseline === null || updaterWindow === null
+      : windowDays < 1 ||
+          updaterOthersAtPublish === null ||
+          updaterBaselineStart === undefined ||
+          updaterWindowEnd === undefined
         ? null
-        : (updaterWindow - updaterBaseline) * windowDays
+        : Math.max(0, updaterWindowEnd - updaterOthersAtPublish) -
+          (Math.max(0, updaterOthersAtPublish - updaterBaselineStart) / BASELINE_DAYS) * windowDays
   const updatedInstalls =
     release.prerelease || installerExcess === null || updaterExcess === null
       ? null
