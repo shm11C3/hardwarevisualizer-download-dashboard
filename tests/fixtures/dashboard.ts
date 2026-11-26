@@ -180,6 +180,12 @@ function releaseEffect(): ReleaseEffect {
       baselineIncludesRelease: false,
     },
     incrementalDownloads: { expected: 1_260, actual: 2_715, incremental: 1_455 },
+    installBase: {
+      windowDays: 7,
+      updatedInstalls: 412,
+      checksPerDay: 131.6,
+      checksPerInstall: 0.32,
+    },
     usageActivity: {
       comparedDays: 24,
       currentPerDay: 126.4,
@@ -353,6 +359,13 @@ export function previewDashboard(url: URL): DashboardResponse {
     totalDownloads: Math.round(point.totalDownloads * 0.62),
     dailyDownloads: point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * 0.62),
   }))
+  const macosSeries = (share: number) =>
+    series.map((point) => ({
+      ...point,
+      totalDownloads: Math.round(point.totalDownloads * share),
+      dailyDownloads:
+        point.dailyDownloads === null ? null : Math.round(point.dailyDownloads * share),
+    }))
   const launchSeries = series.map((point) => ({
     ...point,
     totalDownloads: Math.round(point.totalDownloads * 0.28),
@@ -417,6 +430,39 @@ export function previewDashboard(url: URL): DashboardResponse {
       installer: { periodDownloads: Math.round(periodDownloads * 0.62), series: installerSeries },
       launches: { periodDownloads: Math.round(periodDownloads * 0.28), series: launchSeries },
       launchesPerDay: Math.round((periodDownloads * 0.28) / days),
+    },
+    macosUpdateSplit: {
+      manual: { periodDownloads: Math.round(periodDownloads * 0.03), series: macosSeries(0.03) },
+      updates: { periodDownloads: Math.round(periodDownloads * 0.02), series: macosSeries(0.02) },
+      updateShare: 0.4,
+    },
+    staleLinks: {
+      downloads: 186,
+      share: 0.042,
+      recentPerDay: 3.4,
+      releases: [
+        {
+          tag: 'v1.9.1',
+          url: 'https://github.com/shm11C3/HardwareVisualizer/releases/tag/v1.9.1',
+          supersededBy: 'v1.9.2',
+          supersededFrom: '2026-07-22',
+          downloads: 142,
+          recentDownloads: 21,
+          platforms: [
+            { key: 'windows', label: 'Windows', downloads: 118 },
+            { key: 'macos', label: 'macOS', downloads: 24 },
+          ],
+        },
+        {
+          tag: 'v1.9.0',
+          url: 'https://github.com/shm11C3/HardwareVisualizer/releases/tag/v1.9.0',
+          supersededBy: 'v1.9.1',
+          supersededFrom: '2026-06-26',
+          downloads: 44,
+          recentDownloads: 3,
+          platforms: [{ key: 'windows', label: 'Windows', downloads: 44 }],
+        },
+      ],
     },
     latestVersionShare: 0.57,
     latestVersionTag: 'v1.9.2',

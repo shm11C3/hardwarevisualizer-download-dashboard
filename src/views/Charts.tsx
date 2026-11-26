@@ -5,6 +5,7 @@ import type {
   BreakdownItem,
   DashboardQuery,
   LaunchActivity,
+  MacosUpdateSplit,
   Platform,
   PlatformSeriesItem,
   ReleaseBreakdownItem,
@@ -56,16 +57,23 @@ function segmentedLinePaths(
   return segments.filter((points) => points.length > 1).map(linePath)
 }
 
-export function LaunchActivityChart({
-  activity,
+/** Two daily series on one shared axis, drawn with the update-health line styles. */
+function TwoLineChart({
+  first,
+  second,
+  ariaLabel,
   days,
   formatter,
 }: {
-  activity: LaunchActivity
+  /** Drawn with the installer (blue) line. */
+  first: SeriesPoint[]
+  /** Drawn with the updater (green) line. */
+  second: SeriesPoint[]
+  ariaLabel: string
   days: DashboardQuery['days']
   formatter: Formatter
 }) {
-  const series = activity.installer.series
+  const series = first.length ? first : second
   if (!series.length) return <ChartEmpty message="表示できる日次データがありません" />
 
   const width = 900
@@ -73,9 +81,7 @@ export function LaunchActivityChart({
   const margin = { top: 16, right: 14, bottom: 36, left: 52 }
   const innerWidth = width - margin.left - margin.right
   const innerHeight = height - margin.top - margin.bottom
-  const values = [...activity.installer.series, ...activity.launches.series].map(
-    (point) => point.dailyDownloads ?? 0,
-  )
+  const values = [...first, ...second].map((point) => point.dailyDownloads ?? 0)
   const maximum = niceMaximum(Math.max(...values, 1))
   const x = (index: number) => margin.left + (index / Math.max(series.length - 1, 1)) * innerWidth
   const y = (value: number) => margin.top + innerHeight - (value / maximum) * innerHeight
@@ -87,11 +93,7 @@ export function LaunchActivityChart({
 
   return (
     <div class="chart-frame update-health-chart">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="installer と起動時の更新チェックの日次取得数の比較"
-      >
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
         {Array.from({ length: 5 }, (_, index) => {
           const value = (maximum / 4) * index
           return (
@@ -109,10 +111,10 @@ export function LaunchActivityChart({
             </>
           )
         })}
-        {segmentedLinePaths(activity.installer.series, x, y).map((path) => (
+        {segmentedLinePaths(first, x, y).map((path) => (
           <path class="update-health-line installer" d={path} />
         ))}
-        {segmentedLinePaths(activity.launches.series, x, y).map((path) => (
+        {segmentedLinePaths(second, x, y).map((path) => (
           <path class="update-health-line updater" d={path} />
         ))}
         {labels.map((label) => (
@@ -122,6 +124,49 @@ export function LaunchActivityChart({
         ))}
       </svg>
     </div>
+  )
+}
+
+export function LaunchActivityChart({
+  activity,
+  days,
+  formatter,
+}: {
+  activity: LaunchActivity
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  if (!activity.installer.series.length) {
+    return <ChartEmpty message="表示できる日次データがありません" />
+  }
+  return (
+    <TwoLineChart
+      first={activity.installer.series}
+      second={activity.launches.series}
+      ariaLabel="installer と起動時の更新チェックの日次取得数の比較"
+      days={days}
+      formatter={formatter}
+    />
+  )
+}
+
+export function MacosUpdateSplitChart({
+  split,
+  days,
+  formatter,
+}: {
+  split: MacosUpdateSplit
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  return (
+    <TwoLineChart
+      first={split.manual.series}
+      second={split.updates.series}
+      ariaLabel="macOS の dmg と自動更新ファイルの日次取得数の比較"
+      days={days}
+      formatter={formatter}
+    />
   )
 }
 

@@ -5,12 +5,17 @@ import {
   buildDailySeries,
   buildLatestVersionMetrics,
   buildLaunchActivity,
+  buildMacosUpdateSplit,
   buildPeriodAnalytics,
   buildPlatformSeries,
   buildRepoStats,
+  buildStaleLinks,
   calculateMilestone,
   calculateObservationStreak,
   calculateWeekdayAverages,
+  planStaleLinks,
+  type ReleaseEventRow,
+  type StaleLinkRow,
   selectReleaseEvents,
 } from '../src/lib/analytics'
 import type { SeriesPoint } from '../src/types'
@@ -510,5 +515,147 @@ describe('buildLaunchActivity', () => {
 
     expect(result.launches.series.map((entry) => entry.dailyDownloads)).toEqual([null, null])
     expect(result.launches.periodDownloads).toBe(200)
+  })
+})
+
+describe('buildMacosUpdateSplit', () => {
+  const row = (
+    date: string,
+    manual: number,
+    updates: number | null,
+  ): Parameters<typeof buildMacosUpdateSplit>[0][number] => ({
+    date,
+    manual_assets: 2,
+    manual_total: manual,
+    update_assets: updates === null ? 0 : 2,
+    update_total: updates ?? 0,
+  })
+
+  it('splits dmg downloads from updater-only downloads', () => {
+    const result = buildMacosUpdateSplit(
+      [row('2026-08-01', 50, 10), row('2026-08-02', 53, 18), row('2026-08-03', 55, 20)],
+      '2026-08-02',
+      '2026-08-03',
+      '2026-08-01',
+    )
+
+    expect(result.manual.series.map((entry) => entry.dailyDownloads)).toEqual([3, 2])
+    expect(result.updates.series.map((entry) => entry.dailyDownloads)).toEqual([8, 2])
+    expect(result.manual.periodDownloads).toBe(5)
+    expect(result.updates.periodDownloads).toBe(10)
+    expect(result.updateShare).toBe(0.6667)
+  })
+
+  it('has no share without any updater file', () => {
+    const result = buildMacosUpdateSplit(
+      [row('2026-08-01', 50, null), row('2026-08-02', 53, null)],
+      '2026-08-02',
+      '2026-08-02',
+      '2026-08-01',
+    )
+
+    expect(result.updates.series.every((entry) => entry.dailyDownloads === null)).toBe(true)
+    expect(result.updateShare).toBeNull()
+  })
+})
+
+describe('stale links', () => {
+  const stable = (tag: string, publishedAt: string, prerelease = false): ReleaseEventRow => ({
+    tag,
+    label: tag,
+    publishedAt,
+    prerelease,
+    url: `https://example.com/${tag}`,
+  })
+  const releases = [
+    stable('v1.0.0', '2026-07-01T03:00:00Z'),
+    // 21:04 JST on 2026-08-10: v1.0.0 was still the latest for most of that day.
+    stable('v1.1.0', '2026-08-10T12:04:00Z'),
+    stable('v1.2.0-beta.1', '2026-08-15T03:00:00Z', true),
+    stable('v1.2.0', '2026-08-20T03:00:00Z'),
+  ]
+
+  it('starts counting the day after the successor went out, ignoring pre-releases', () => {
+    const plan = planStaleLinks(releases, 'Asia/Tokyo', '2026-08-01', '2026-08-25')
+
+    expect(plan.recentStart).toBe('2026-08-18')
+    expect(plan.cuts).toEqual([
+      {
+        tag: 'v1.0.0',
+        url: 'https://example.com/v1.0.0',
+        supersededBy: 'v1.1.0',
+        supersededFrom: '2026-08-11',
+        from: '2026-08-11',
+        recent: '2026-08-18',
+      },
+      {
+        tag: 'v1.1.0',
+        url: 'https://example.com/v1.1.0',
+        supersededBy: 'v1.2.0',
+        supersededFrom: '2026-08-21',
+        from: '2026-08-21',
+        recent: '2026-08-21',
+      },
+    ])
+  })
+
+  it('clamps to the period and skips releases replaced only on its last day', () => {
+    const plan = planStaleLinks(releases, 'Asia/Tokyo', '2026-08-15', '2026-08-21')
+
+    expect(plan.recentStart).toBe('2026-08-15')
+    expect(plan.cuts.map((cut) => [cut.tag, cut.from])).toEqual([['v1.0.0', '2026-08-15']])
+  })
+
+  it('totals stale downloads per release and their share of stable installers', () => {
+    const plan = planStaleLinks(releases, 'Asia/Tokyo', '2026-08-01', '2026-08-25')
+    const row = (
+      tag: string,
+      platform: StaleLinkRow['platform'],
+      period: number,
+      stale: number,
+      recent: number,
+    ): StaleLinkRow => ({
+      tag,
+      platform,
+      period_downloads: period,
+      stale_downloads: stale,
+      recent_downloads: recent,
+    })
+    const result = buildStaleLinks(
+      [
+        row('v1.0.0', 'windows', 120, 40, 7),
+        row('v1.0.0', 'macos', 12, 6, 0),
+        row('v1.1.0', 'windows', 300, 25, 14),
+        row('v1.1.0', 'linux', 30, 0, 0),
+        row('v1.2.0', 'windows', 138, 0, 0),
+      ],
+      plan,
+    )
+
+    expect(result.downloads).toBe(71)
+    expect(result.share).toBe(0.1183)
+    expect(result.recentPerDay).toBe(3)
+    expect(result.releases.map((item) => [item.tag, item.downloads, item.recentDownloads])).toEqual(
+      [
+        ['v1.0.0', 46, 7],
+        ['v1.1.0', 25, 14],
+      ],
+    )
+    expect(result.releases[0]?.platforms).toEqual([
+      { key: 'windows', label: 'Windows', downloads: 40 },
+      { key: 'macos', label: 'macOS', downloads: 6 },
+    ])
+    expect(result.releases[1]?.platforms.map((platform) => platform.key)).toEqual(['windows'])
+  })
+
+  it('reports nothing without stable installer downloads', () => {
+    const plan = planStaleLinks([], 'Asia/Tokyo', '2026-08-01', '2026-08-25')
+
+    expect(buildStaleLinks([], plan)).toEqual({
+      downloads: 0,
+      share: null,
+      recentPerDay: 0,
+      releases: [],
+    })
   })
 })

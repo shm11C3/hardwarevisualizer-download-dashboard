@@ -1439,6 +1439,24 @@ tbody tr:hover td {
   }
 }
 
+/* Install base and stale-link panels reuse the usage activity styles. */
+.install-base-subheading {
+  flex-wrap: wrap;
+  margin-top: 26px;
+}
+
+.update-health-legend i.installer {
+  background: #7c9cff;
+}
+
+.stale-links-panel .table-wrap {
+  margin-top: 14px;
+}
+
+.stale-links-panel .platform-badge + .platform-badge {
+  margin-left: 6px;
+}
+
 /* Release adoption curve */
 .adoption-panel {
   margin-bottom: 14px;

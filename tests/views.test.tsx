@@ -224,6 +224,81 @@ describe('DashboardPage', () => {
     expect(html.indexOf('リリース効果')).toBeLessThan(html.indexOf('リリース採用曲線'))
   })
 
+  it('estimates updated installs after the release effect and splits macOS by fetch path', async () => {
+    const html = await render(previewDashboard(new URL('https://example.com/')))
+
+    expect(html).toContain('更新から見る利用規模')
+    expect(html).toContain('v1.9.2 · 公開後 7 日間')
+    expect(html).toContain('>412<')
+    expect(html).toContain('>131.6<')
+    expect(html).toContain('>0.32<')
+    expect(html).toContain('同じ MSI')
+    expect(html).toContain('macOS: 手動ダウンロードと自動更新')
+    expect(html).toContain('>40%<')
+    expect(html).toContain('aria-label="macOS の dmg と自動更新ファイルの日次取得数の比較"')
+    expect(html.indexOf('リリース効果')).toBeLessThan(html.indexOf('更新から見る利用規模'))
+    expect(html.indexOf('更新から見る利用規模')).toBeLessThan(html.indexOf('リリース採用曲線'))
+  })
+
+  it('explains why the install estimate is missing for a pre-release', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const effect = data.releaseEffect as ReleaseEffect
+    const html = await render({
+      ...data,
+      releaseEffect: {
+        ...effect,
+        release: { ...effect.release, prerelease: true },
+        installBase: {
+          windowDays: null,
+          updatedInstalls: null,
+          checksPerDay: null,
+          checksPerInstall: null,
+        },
+      },
+    })
+
+    expect(html).toContain('pre-release は自動更新の配信対象外のため推定しません')
+    expect(html).not.toContain('公開後 7 日間')
+  })
+
+  it('says when no update burst could be told apart from the usual pace', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const effect = data.releaseEffect as ReleaseEffect
+    const html = await render({
+      ...data,
+      releaseEffect: {
+        ...effect,
+        installBase: { ...effect.installBase, updatedInstalls: 0, checksPerInstall: null },
+      },
+    })
+
+    expect(html).toContain('自動更新の山を検出できませんでした')
+  })
+
+  it('lists stale-link downloads before the distribution files', async () => {
+    const html = await render(previewDashboard(new URL('https://example.com/')))
+
+    expect(html).toContain('旧バージョンへのダウンロード')
+    expect(html).toContain('>186<')
+    expect(html).toContain('>4.2%<')
+    expect(html).toContain('>3.4<')
+    expect(html).toContain('Windows 118')
+    expect(html).toContain('2026年7月22日')
+    expect(html.indexOf('旧バージョンへのダウンロード')).toBeLessThan(
+      html.indexOf('配布ファイル上位'),
+    )
+  })
+
+  it('renders the stale-link empty state', async () => {
+    const data = previewDashboard(new URL('https://example.com/'))
+    const html = await render({
+      ...data,
+      staleLinks: { downloads: 0, share: 0, recentPerDay: 0, releases: [] },
+    })
+
+    expect(html).toContain('後継リリースの公開後に取得された旧バージョンはありません')
+  })
+
   it('states that the signals are proxies and not user counts', async () => {
     const html = await render(previewDashboard(new URL('https://example.com/')))
 
