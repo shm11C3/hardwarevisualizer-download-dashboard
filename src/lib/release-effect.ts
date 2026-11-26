@@ -20,13 +20,22 @@ import { addDays, daysBetween, toDateKey } from './date'
 export const BASELINE_DAYS = 7
 /** Matches the adoption curve, which follows a release for 30 days. */
 export const EVALUATION_WINDOW_DAYS = 30
+/**
+ * Days after publish over which the update burst is counted. Existing installs
+ * pick a release up the next time they start, so most of the burst lands in the
+ * first week; a longer window lets day-to-day swings in new downloads swamp it.
+ */
+export const INSTALL_BASE_WINDOW_DAYS = 7
 const ACTIVITY_CHART_DAYS = 60
 const FALLBACK_LOOKBACK_DAYS = 14
 
 export interface TagTotalRow {
   tag: string
   date: string
+  /** Cumulative installer downloads of the release. */
   total: number
+  /** Cumulative updater-only downloads of the release. */
+  updaterTotal?: number
 }
 
 interface PlannedRelease extends ReleaseEffectRelease {
@@ -51,7 +60,9 @@ export interface ReleaseEffectData {
   installerTotals: DailyTotalRow[]
   /** Cumulative latest.json downloads across every release. */
   updateCheckTotals: DailyTotalRow[]
-  /** Cumulative installer downloads of the latest and previous release. */
+  /** Cumulative updater-only downloads (macOS .app.tar.gz) across every release. */
+  updaterTotals: DailyTotalRow[]
+  /** Cumulative installer and updater downloads of the latest and previous release. */
   tagTotals: TagTotalRow[]
 }
 
@@ -180,6 +191,7 @@ export function buildReleaseEffect(
   const publishedDate = release.publishedDate
   const installer = totalsByDate(data.installerTotals)
   const checks = totalsByDate(data.updateCheckTotals)
+  const updater = totalsByDate(data.updaterTotals)
   const tags = totalsByTag(data.tagTotals)
   const comparable = day >= 1
 
@@ -221,6 +233,51 @@ export function buildReleaseEffect(
       : null
   const postPerDay = actual === null ? null : actual / day
   const expected = baselinePerDay === null ? null : Math.round(baselinePerDay * day)
+
+  // The pre-release pace stands for the downloads that would have come anyway;
+  // the rest of the burst is installs updating. Installers are measured exactly
+  // like the lift above. Updater-only files fetch nothing before a release, so
+  // their own pace is subtracted the same way rather than assumed to be zero.
+  const windowDays = Math.min(day, INSTALL_BASE_WINDOW_DAYS)
+  const windowEnd = addDays(publishedDate, windowDays)
+  const windowInstallers = installer.get(windowEnd)
+  const installerExcess =
+    windowDays >= 1 &&
+    baselinePerDay !== null &&
+    othersAtPublish !== null &&
+    windowInstallers !== undefined
+      ? Math.max(0, windowInstallers - othersAtPublish) - baselinePerDay * windowDays
+      : null
+  // As with installers, the release's own updater downloads already in the
+  // publish-date snapshot belong to the post-release window, not the baseline.
+  const releaseUpdaterAtPublish =
+    data.tagTotals.find((row) => row.tag === release.tag && row.date === publishedDate)
+      ?.updaterTotal ?? 0
+  const updaterAtPublish = updater.get(publishedDate)
+  const updaterOthersAtPublish =
+    updaterAtPublish === undefined
+      ? null
+      : Math.max(0, updaterAtPublish - Math.max(0, releaseUpdaterAtPublish))
+  const updaterBaselineStart = updater.get(baselineStart)
+  const updaterWindowEnd = updater.get(windowEnd)
+  // A history without updater files (no macOS build) adds nothing rather than
+  // making the whole estimate unavailable.
+  const updaterExcess =
+    updater.size === 0
+      ? 0
+      : windowDays < 1 ||
+          updaterOthersAtPublish === null ||
+          updaterBaselineStart === undefined ||
+          updaterWindowEnd === undefined
+        ? null
+        : Math.max(0, updaterWindowEnd - updaterOthersAtPublish) -
+          (Math.max(0, updaterOthersAtPublish - updaterBaselineStart) / BASELINE_DAYS) * windowDays
+  const updatedInstalls =
+    release.prerelease || installerExcess === null || updaterExcess === null
+      ? null
+      : Math.max(0, Math.round(installerExcess + updaterExcess))
+  const windowChecks =
+    release.prerelease || windowDays < 1 ? null : ratePerDay(checks, publishedDate, windowEnd)
 
   // Update checks are counted on whichever release is latest, so the previous
   // release's window must end before this one began. When the releases are closer
@@ -272,6 +329,15 @@ export function buildReleaseEffect(
       expected,
       actual,
       incremental: expected === null || actual === null ? null : actual - expected,
+    },
+    installBase: {
+      windowDays: release.prerelease || windowDays < 1 ? null : windowDays,
+      updatedInstalls,
+      checksPerDay: windowChecks === null ? null : round(windowChecks),
+      checksPerInstall:
+        windowChecks === null || updatedInstalls === null || updatedInstalls <= 0
+          ? null
+          : round(windowChecks / updatedInstalls, 2),
     },
     usageActivity: {
       comparedDays,

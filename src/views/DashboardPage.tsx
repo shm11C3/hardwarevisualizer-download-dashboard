@@ -1,3 +1,4 @@
+import { STALE_RECENT_DAYS } from '../lib/analytics'
 import { architectureLabel, platformLabel } from '../lib/assets'
 import { apiQuerySearch } from '../lib/query'
 import { BASELINE_DAYS, EVALUATION_WINDOW_DAYS } from '../lib/release-effect'
@@ -9,14 +10,17 @@ import type {
   DashboardResponse,
   EmptyDashboardResponse,
   LaunchActivity,
+  MacosUpdateSplit,
   ReleaseEffect,
   RepoStats,
+  StaleLinkDownloads,
 } from '../types'
 import {
   AdoptionCurveChart,
   CumulativeChart,
   DailyChart,
   LaunchActivityChart,
+  MacosUpdateSplitChart,
   PLATFORM_COLORS,
   PlatformBreakdown,
   PlatformTrendChart,
@@ -374,6 +378,190 @@ function ReleaseEffectPanel({
   )
 }
 
+function installBaseNote(effect: ReleaseEffect | null): string {
+  if (!effect) return '比較できるリリースがまだありません'
+  if (effect.release.prerelease) return 'pre-release は自動更新の配信対象外のため推定しません'
+  if (effect.day < 1) return '公開直後のため、比較できるスナップショットがまだありません'
+  return 'スナップショットの欠損などで公開前後を同じ条件で比べられません'
+}
+
+function InstallBasePanel({
+  effect,
+  macos,
+  days,
+  formatter,
+}: {
+  effect: ReleaseEffect | null
+  macos: MacosUpdateSplit
+  days: DashboardQuery['days']
+  formatter: Formatter
+}) {
+  const base = effect?.installBase ?? null
+  const windowDays = base?.windowDays ?? null
+  const updated = base?.updatedInstalls ?? null
+  const observed = (series: MacosUpdateSplit['manual']['series']) =>
+    series.some((point) => point.dailyDownloads !== null)
+  const hasManual = observed(macos.manual.series)
+  const hasUpdates = observed(macos.updates.series)
+  return (
+    <section class="panel update-health-panel install-base-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Install base</p>
+          <h2>更新から見る利用規模</h2>
+        </div>
+        {effect && windowDays !== null ? (
+          <span class="panel-meta">{`${effect.release.tag} · 公開後 ${windowDays} 日間`}</span>
+        ) : null}
+      </div>
+      <div class="update-health-totals">
+        <div>
+          <span>自動更新したインストール（推定）</span>
+          <strong>{updated === null ? '—' : formatNumber(updated)}</strong>
+        </div>
+        <div>
+          <span>起動時の更新チェック（1 日平均）</span>
+          <strong>{base?.checksPerDay == null ? '—' : formatDecimal(base.checksPerDay)}</strong>
+        </div>
+        <div>
+          <span>1 インストールあたりの起動（1 日あたり）</span>
+          <strong>
+            {base?.checksPerInstall == null ? '—' : formatNumber(base.checksPerInstall, 2)}
+          </strong>
+        </div>
+      </div>
+      <p class="panel-description">
+        {updated === null
+          ? `${installBaseNote(effect)}。`
+          : updated === 0
+            ? '公開後のダウンロードが公開前の通常ペースを上回らず、自動更新の山を検出できませんでした。'
+            : `公開後 ${windowDays} 日間の installer と自動更新ファイルの取得数から、公開前 ${BASELINE_DAYS} 日間の通常ペース分を差し引いた値です。`}
+        Windows では LP・winget・自動更新が同じ MSI
+        を配るため、ファイル名では新規と更新を分けられません。リリース直後に上乗せされた分を、既存インストールが更新した数とみなしています。期間内に起動しなかったインストールは数えられず、リリース告知で増えた新規ダウンロードは含まれるため、目安として扱ってください。
+      </p>
+
+      <div class="repo-chart-heading install-base-subheading">
+        <h3>macOS: 手動ダウンロードと自動更新</h3>
+        <span class="update-health-legend">
+          <span>
+            <i class="installer" /> dmg（手動）
+          </span>
+          <span>
+            <i class="updater" /> .app.tar.gz（自動更新）
+          </span>
+        </span>
+      </div>
+      <div class="update-health-totals">
+        <div>
+          <span>dmg（期間合計）</span>
+          <strong>{hasManual ? formatNumber(macos.manual.periodDownloads) : '—'}</strong>
+        </div>
+        <div>
+          <span>自動更新（期間合計）</span>
+          <strong>{hasUpdates ? formatNumber(macos.updates.periodDownloads) : '—'}</strong>
+        </div>
+        <div>
+          <span>自動更新の比率</span>
+          <strong>
+            {macos.updateShare === null ? '—' : `${formatDecimal(macos.updateShare * 100)}%`}
+          </strong>
+        </div>
+      </div>
+      <MacosUpdateSplitChart split={macos} days={days} formatter={formatter} />
+      <p class="panel-description">
+        macOS の dmg は LP や GitHub から手動でしか取得されず、.app.tar.gz
+        は自動更新だけが取得します。そのため macOS
+        に限っては、新規導入と更新を取得経路で分けられます。この内訳は集計対象（scope）設定の影響を受けません。
+      </p>
+    </section>
+  )
+}
+
+function StaleLinksPanel({
+  stale,
+  formatter,
+}: {
+  stale: StaleLinkDownloads
+  formatter: Formatter
+}) {
+  return (
+    <section class="panel update-health-panel stale-links-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-kicker">Stale links</p>
+          <h2>旧バージョンへのダウンロード</h2>
+        </div>
+        <span class="panel-meta">選択期間 · 安定版 installer</span>
+      </div>
+      <div class="update-health-totals">
+        <div>
+          <span>後継リリース公開後の取得数（期間合計）</span>
+          <strong>{formatNumber(stale.downloads)}</strong>
+        </div>
+        <div>
+          <span>安定版 installer に占める割合</span>
+          <strong>{stale.share === null ? '—' : `${formatDecimal(stale.share * 100)}%`}</strong>
+        </div>
+        <div>
+          <span>{`直近 ${STALE_RECENT_DAYS} 日の 1 日平均`}</span>
+          <strong>{formatDecimal(stale.recentPerDay)}</strong>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>リリース</th>
+              <th>後継</th>
+              <th>置き換え後の初日</th>
+              <th>主な OS</th>
+              <th class="number-cell">期間</th>
+              <th class="number-cell">{`直近 ${STALE_RECENT_DAYS} 日`}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stale.releases.length === 0 ? (
+              <tr>
+                <td class="empty-table-cell" colspan={6}>
+                  後継リリースの公開後に取得された旧バージョンはありません
+                </td>
+              </tr>
+            ) : (
+              stale.releases.map((item) => (
+                <tr>
+                  <td class="asset-name-cell">
+                    <a href={safeUrl(item.url)} target="_blank" rel="noreferrer">
+                      {item.tag}
+                    </a>
+                  </td>
+                  <td>{item.supersededBy}</td>
+                  <td>{formatter.date(item.supersededFrom)}</td>
+                  <td>
+                    {item.platforms.map((platform) => (
+                      <span class="platform-badge" title={`${formatNumber(platform.downloads)} 件`}>
+                        {`${platform.label} ${formatNumber(platform.downloads)}`}
+                      </span>
+                    ))}
+                  </td>
+                  <td class="number-cell">{formatNumber(item.downloads)}</td>
+                  <td class="number-cell">{formatNumber(item.recentDownloads)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p class="panel-description">
+        新しい安定版が出た翌日以降に、それより古い安定版の installer
+        が取得された件数です。自動更新は常に最新版を取得するため、これらはバージョンを固定したリンク（再ビルド前の
+        LP、更新前の winget
+        マニフェストなど）か、意図的に旧版を選んだ取得です。後継の公開当日は旧版がまだ最新だった時間を含むため除外しています。pre-release
+        は対象外で、集計対象（scope）・チャネル設定の影響を受けません。
+      </p>
+    </section>
+  )
+}
+
 function RepoStatsPanel({
   stats,
   days,
@@ -669,6 +857,13 @@ export function DashboardPage({
 
           <ReleaseEffectPanel effect={data.releaseEffect} formatter={formatter} />
 
+          <InstallBasePanel
+            effect={data.releaseEffect}
+            macos={data.macosUpdateSplit}
+            days={data.meta.days}
+            formatter={formatter}
+          />
+
           <section class="panel adoption-panel">
             <div class="panel-header">
               <div>
@@ -731,6 +926,7 @@ export function DashboardPage({
             </article>
           </section>
 
+          <StaleLinksPanel stale={data.staleLinks} formatter={formatter} />
           <AssetTable items={data.topAssets} />
           <Insights items={data.insights} />
           <MethodNote trackingSince={formatter.date(data.meta.trackingSince)} />
