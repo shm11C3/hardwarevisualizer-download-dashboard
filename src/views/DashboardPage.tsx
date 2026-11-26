@@ -43,20 +43,7 @@ function Hero({ status }: { status: { kind: StatusKind; message: string } }) {
   const statusClass = status.kind === 'neutral' ? 'data-status' : `data-status ${status.kind}`
   return (
     <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">
-          <span /> GitHub Release Intelligence
-        </p>
-        <h1>
-          ダウンロードの動きを、
-          <br />
-          <em>数字から読み解く。</em>
-        </h1>
-        <p class="hero-description">
-          GitHub Release の累積値を毎日保存し、増分、推移、OS
-          構成、リリースごとの反応を可視化します。
-        </p>
-      </div>
+      <h1>ダウンロード統計</h1>
       <div class={statusClass} aria-live="polite">
         <span class="status-dot" />
         <span>{status.message}</span>
